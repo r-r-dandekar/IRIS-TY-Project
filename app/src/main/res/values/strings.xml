@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">CameraTesting</string>
+    <string name="capture_photo">Capture Photo</string>
+    <string name="stop_capture">Stop Capture</string>
+    <string name="server_ip_address_label">Server IP Address:</string>
+    <string name="server_default_ip_address">127.0.0.1</string>
+    <string name="server_port_number_label">Server Port Number:</string>
+    <string name="server_default_port_number">55555</string>
+    <string name="photos_per_capture_label">Photos Per Capture:</string>
+    <string name="default_photos_per_capture">1</string>
+
+</resources>
