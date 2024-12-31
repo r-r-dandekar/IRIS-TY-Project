@@ -426,7 +426,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initSpeechRecognition() {
-        // Get SpeechRecognizer instance
+            // Get SpeechRecognizer instance
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             // Speech recognition service NOT available
             return
