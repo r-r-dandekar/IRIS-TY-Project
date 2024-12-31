@@ -3,13 +3,14 @@
 *.ipr
 .gradle
 /local.properties
-/.idea/
+/.idea
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
+/.kotlin
 .DS_Store
 /build
 /captures
@@ -17,3 +18,5 @@
 .cxx
 local.properties
 /python/venv
+/python/__pycache__
+.env

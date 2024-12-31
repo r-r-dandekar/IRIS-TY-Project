@@ -1,0 +1,10 @@
+google.generativeai
+argparse
+python-dotenv
+torch
+opencv-python
+pytesseract
+pillow
+argparse
+transformers
+ultralytics

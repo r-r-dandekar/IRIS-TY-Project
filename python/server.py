@@ -10,7 +10,6 @@ import time
 from sys import stdout
 import re
 from ocr_utils import image_to_string
-import traceback
 
 
 # Server settings
