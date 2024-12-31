@@ -8,3 +8,5 @@ pillow
 argparse
 transformers
 ultralytics
+deepface
+tf-keras

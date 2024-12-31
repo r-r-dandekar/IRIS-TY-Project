@@ -178,22 +178,21 @@ class MainActivity : AppCompatActivity() {
         val jsonObject = JSONObject(jsonString)
 
         // Initialize a list to hold the parts of the result string
-        val result = mutableListOf<String>()
+        var result : String = ""
 
-        // Iterate through the JSON object and format the key-value pairs
-        jsonObject.keys().forEach { key ->
-            if (key == "image_caption") {
-                val value = jsonObject.getString(key) // Get the value as an integer
-                result.add("I see $value") // Add the formatted string to the list
-            }
-            else if (key == "ocr_text") {
-                val value = jsonObject.getString(key) // Get the value as an integer
-                result.add(value) // Add the formatted string to the list
-            }
+        if (jsonObject.has("image_caption")) {
+            val value = jsonObject.getString("image_caption")
+            result = "I see $value"
+        } else if (jsonObject.has("ocr_text")) {
+            val value = jsonObject.getString("ocr_text")
+            result = value
+        } else if (jsonObject.has("found_face")) {
+            println("FACEEEE"+jsonObject.getString("found_face"))
+            result = jsonObject.getString("face_name")
         }
 
         // Join the list into a single string with " and " separator
-        return result.joinToString(" and ")
+        return result
     }
 
     private fun changeVoice() {
@@ -322,6 +321,12 @@ class MainActivity : AppCompatActivity() {
             extraInstructions=extraInstructions, command="ocr", resolutionFactor=700)
     }
 
+    private fun face_recognition(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
+                    extraInstructions: String = "None") {
+        multiImageCommand(imagePaths=imagePaths, count=count,
+            extraInstructions=extraInstructions, command="face_recognition", resolutionFactor=700)
+    }
+
     private fun takePhoto() {
         val imageCapture = imageCapture ?: return
 
@@ -402,6 +407,11 @@ class MainActivity : AppCompatActivity() {
             if (str.contains("what is written")) {
                 val extraInstructions = str.substringAfter("what is written").trim()
                 ocr(extraInstructions=extraInstructions)
+                lookingMessage()
+            }
+            if (str.contains("who is this")) {
+                val extraInstructions = str.substringAfter("who is this").trim()
+                face_recognition(extraInstructions=extraInstructions)
                 lookingMessage()
             }
             if (str.contains("count the objects")) {
