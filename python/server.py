@@ -58,12 +58,9 @@ def ocr(json_data):
             image_data = base64.b64decode(base64_string)
             nparr = np.frombuffer(image_data, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            i = 0
-            while i < 4:
-                text = image_to_string(image)
-                i+=1
-                ocr_output.append(text)
-                image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+            image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+            text = image_to_string(image)
+            ocr_output.append(text)
 
         text = clean_ocr_output(ocr_output, extra_instructions=extra_instructions)
         results={"ocr_text":text}
