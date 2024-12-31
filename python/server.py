@@ -1,16 +1,16 @@
+from face_recognition import find_face
 from nlp_utils import combine_descriptions, clean_ocr_output
 import socket
 import cv2
 import numpy as np
 import base64
-from object_detection import show_results_from_opencv_image
+# from object_detection import show_results_from_opencv_image
 import json
 from image_captioning import predict_step_from_rgb_images
 import time
 from sys import stdout
 import re
 from ocr_utils import image_to_string
-
 
 # Server settings
 HOST = '0.0.0.0'  # Bind to all network interfaces
@@ -58,15 +58,37 @@ def ocr(json_data):
             image_data = base64.b64decode(base64_string)
             nparr = np.frombuffer(image_data, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            i = 0
-            while i < 4:
-                text = image_to_string(image)
-                i+=1
-                ocr_output.append(text)
-                image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+            image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+            text = image_to_string(image)
+            ocr_output.append(text)
 
         text = clean_ocr_output(ocr_output, extra_instructions=extra_instructions)
         results={"ocr_text":text}
+        print(results)
+        json_str = json.dumps(results)
+        client_socket.send(json_str.encode())
+
+
+def face_recognition(json_data):
+        base64_strings = json_data["images"]
+        extra_instructions = json_data["extra_instructions"]
+        print("extra_instructions: "+extra_instructions)
+        stdout.flush()
+
+        name = ''
+        for base64_string in base64_strings:
+            image_data = base64.b64decode(base64_string)
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+            name = find_face(image)
+            if name != None:
+                break
+
+        if name:
+            results={"face_name":name, "found_face":True}
+        else:
+            results={"face_name":"", "found_face":False}
         print(results)
         json_str = json.dumps(results)
         client_socket.send(json_str.encode())
@@ -107,6 +129,8 @@ def run_command(json):
         image_caption(json)
     elif json["command"]=="ocr":
         ocr(json)
+    elif json["command"]=="face_recognition":
+        face_recognition(json)
 
 if __name__=="__main__":
     # Create a TCP/IP socket

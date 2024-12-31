@@ -54,7 +54,8 @@ def clean_ocr_output(outputs, extra_instructions='none'):
     Do not mention the passages by name. Do not say 'provided text', instead use \
     phrases like 'I see'.\
     If you are not able to clearly read the whole text, focus on what you can see, and \
-    keep the rest of the response short.\
+    keep the rest of the response short. Do not give a summary of the passage, \
+    instead read whatever is legible, make guesses if needed. \
     extra instructions: {extra_instructions}\
     passages: {outputs_text}"
   cleaned = chat_session.send_message(prompt).text

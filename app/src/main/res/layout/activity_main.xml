@@ -18,12 +18,12 @@
         app:layout_constraintVertical_bias="0.495" />
 
     <Button
-        android:id="@+id/image_capture_button"
+        android:id="@+id/stopSpeakingButton"
         android:layout_width="110dp"
         android:layout_height="110dp"
         android:layout_marginBottom="50dp"
         android:elevation="2dp"
-        android:text="@string/capture_photo"
+        android:text="@string/stop_speaking"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
