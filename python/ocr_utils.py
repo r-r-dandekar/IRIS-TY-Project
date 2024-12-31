@@ -42,7 +42,7 @@ if __name__=="__main__":
 	if args["pre_processor"]=="blur":
 		cv2.medianBlur(gray, 3)
 
-	ocr(images)
+	image_to_string(images)
 		
 	#memory usage with image i.e. adding image to memory
 	filename = "{}.jpg".format(os.getpid())
