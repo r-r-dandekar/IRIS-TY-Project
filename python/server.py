@@ -1,4 +1,4 @@
-# from face_recognition import find_face
+from face_recognition import find_face
 from nlp_utils import combine_descriptions, clean_ocr_output
 import socket
 import cv2
@@ -11,9 +11,6 @@ import time
 from sys import stdout
 import re
 from ocr_utils import image_to_string
-
-print('HI')
-
 
 # Server settings
 HOST = '0.0.0.0'  # Bind to all network interfaces
