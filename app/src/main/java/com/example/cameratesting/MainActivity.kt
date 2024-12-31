@@ -93,7 +93,7 @@ class MainActivity : AppCompatActivity() {
         startReceivingTCPThread()
 
         // Set up the listeners for take photo and video capture buttons
-        viewBinding.imageCaptureButton.setOnClickListener { describeScene() }
+        viewBinding.stopSpeakingButton.setOnClickListener { speak(" ") }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
