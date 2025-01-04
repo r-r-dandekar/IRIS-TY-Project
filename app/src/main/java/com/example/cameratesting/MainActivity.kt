@@ -321,6 +321,9 @@ class MainActivity : AppCompatActivity() {
             extraInstructions=extraInstructions, command="ocr", resolutionFactor=700)
     }
 
+    private fun add_face(imagePaths : MutableList<String> = mutableListOf(), name: String) {
+        multiImageCommand(imagePaths=imagePaths, count=1, extraInstructions=name, command = "add_face", resolutionFactor=700)
+    }
     private fun face_recognition(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
                     extraInstructions: String = "None") {
         multiImageCommand(imagePaths=imagePaths, count=count,
@@ -412,6 +415,11 @@ class MainActivity : AppCompatActivity() {
             if (str.contains("who is this")) {
                 val extraInstructions = str.substringAfter("who is this").trim()
                 face_recognition(extraInstructions=extraInstructions)
+                lookingMessage()
+            }
+            if(str.contains("this is")){
+                val name = str.substringAfter("this is").trim()
+                add_face(name = name)
                 lookingMessage()
             }
             if (str.contains("count the objects")) {

@@ -11,6 +11,9 @@ import time
 from sys import stdout
 import re
 from ocr_utils import image_to_string
+import random
+import os
+import string
 
 # Server settings
 HOST = '0.0.0.0'  # Bind to all network interfaces
@@ -123,6 +126,56 @@ def image_caption(json_data):
         json_str = json.dumps(results)
         client_socket.send(json_str.encode())
 
+def save_photos_with_unique_names(images, name):
+    # Ensure the face_db directory exists
+    folder_path = "face_db"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+
+    saved_file_names = []  # Keep track of saved file names to ensure uniqueness
+
+    for idx, image in enumerate(images):
+        while True:
+            # Generate a unique random number as a string
+            random_number = ''.join(random.choices(string.digits, k=5))
+            file_name = f"{name}_{random_number}.jpg"
+            file_path = os.path.join(folder_path, file_name)
+
+            # Check if the file name is unique
+            if file_name not in saved_file_names and not os.path.exists(file_path):
+                break
+
+        # Save the image
+        cv2.imwrite(file_path, image)
+        saved_file_names.append(file_name)  # Add to the list of saved file names
+
+        print(f"Image {idx + 1} saved as: {file_path}")
+
+def add_face(json_data):
+        print("Got JSON data")
+
+        images = []
+        base64_strings = json_data["images"]
+        extra_instructions = json_data["extra_instructions"]
+        name = extra_instructions
+        print("extra_instructions: "+extra_instructions)
+        stdout.flush()
+
+        for base64_string in base64_strings:
+            image_data = base64.b64decode(base64_string)
+            nparr = np.frombuffer(image_data, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            # image = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+            images.append(image)
+        
+        save_photos_with_unique_names(images,name)
+
+        results = {"add_face":"success"}
+        print(results)
+        json_str = json.dumps(results)
+        client_socket.send(json_str.encode())
+        
 def run_command(json):
     print("command: "+json["command"])
     if json["command"]=="image_caption":
@@ -131,6 +184,8 @@ def run_command(json):
         ocr(json)
     elif json["command"]=="face_recognition":
         face_recognition(json)
+    elif json["command"]=="add_face":
+        add_face(json)
 
 if __name__=="__main__":
     # Create a TCP/IP socket
