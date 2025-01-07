@@ -25,6 +25,17 @@ chat_session = model.start_chat(
   ]
 )
 
+def summarize_barcode_data(data, extra_instructions='none'):
+  print("Original barcode data: "+str(data))
+  prompt=f"The following is detailed information about a product. Generate a short summary of this information,\
+    trying to include only that information which is needed for a layman, unless any extra instructions are given.\
+    If any extra instructions are given, follow those instructions.\
+    extra instructions: {extra_instructions}\
+    information: {data}"
+  combined = chat_session.send_message(prompt).text
+  print("Summarized barcode data: "+combined)
+  return combined
+
 def combine_descriptions(descriptions, extra_instructions='none'):
   print("Original descriptions: "+str(descriptions))
   prompt=f"The following are descriptions about a scene. Some of them may be innaccurate. \

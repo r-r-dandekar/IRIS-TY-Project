@@ -10,3 +10,6 @@ transformers
 ultralytics
 deepface
 tf-keras
+chromadb
+pyzbar
+requests
