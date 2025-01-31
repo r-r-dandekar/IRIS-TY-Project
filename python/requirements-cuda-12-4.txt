@@ -1,0 +1,17 @@
+google.generativeai
+argparse
+python-dotenv
+torch -install-option='--index-url https://download.pytorch.org/whl/cu124'
+torchvision -install-option='--index-url https://download.pytorch.org/whl/cu124'
+torchaudio -install-option='--index-url https://download.pytorch.org/whl/cu124'
+opencv-python
+pytesseract
+pillow
+argparse
+transformers
+ultralytics
+deepface
+tf-keras
+chromadb
+pyzbar
+requests

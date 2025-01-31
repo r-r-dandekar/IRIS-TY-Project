@@ -124,21 +124,40 @@ def image_caption(json_data):
         print("extra_instructions: "+extra_instructions)
         stdout.flush()
 
-        for base64_string in base64_strings:
-            image_data = base64.b64decode(base64_string)
+        if len(base64_strings) > 1:
+
+            for base64_string in base64_strings:
+                image_data = base64.b64decode(base64_string)
+                nparr = np.frombuffer(image_data, np.uint8)
+                image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # image = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+                images.append(image)
+
+            start_time = time.time()
+            descriptions = predict_step_from_rgb_images(images)
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print(f"Time to generate descriptions: {execution_time}")
+
+            caption = combine_descriptions(descriptions, extra_instructions=extra_instructions)
+
+        else:
+            image_data = base64.b64decode(base64_strings[0])
             nparr = np.frombuffer(image_data, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            # image = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
             images.append(image)
 
-        start_time = time.time()
-        descriptions = predict_step_from_rgb_images(images)
-        end_time = time.time()
-        execution_time = end_time - start_time
-        print(f"Time to generate descriptions: {execution_time}")
+            start_time = time.time()
+            descriptions = predict_step_from_rgb_images(images)
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print(f"Time to generate description: {execution_time}")
 
-        caption = combine_descriptions(descriptions, extra_instructions=extra_instructions)
+            caption = descriptions[0]
+
+
         results = {"image_caption":caption}
         print(results)
         json_str = json.dumps(results)

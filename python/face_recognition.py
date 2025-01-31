@@ -90,7 +90,9 @@ def add_faces(images, name):
 
 
 if __name__=="__main__":
-    image = cv2.imread("face.jpg")
-    add_faces([image], 'pradnesh')
-    image = cv2.imread("test.jpg")
+    # image = cv2.imread("face.jpg")
+    # add_faces([image], 'pradnesh')
+    # image = cv2.imread("abhi.jpg")
+    # add_faces([image], 'abhishek')
+    image = cv2.imread("abhi3.jpg")
     print(find_face(image))

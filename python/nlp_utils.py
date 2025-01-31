@@ -32,18 +32,21 @@ def summarize_barcode_data(data, extra_instructions='none'):
     If any extra instructions are given, follow those instructions.\
     extra instructions: {extra_instructions}\
     information: {data}"
-  combined = chat_session.send_message(prompt).text
+  combined = llm_response(prompt)
   print("Summarized barcode data: "+combined)
   return combined
 
 def combine_descriptions(descriptions, extra_instructions='none'):
   print("Original descriptions: "+str(descriptions))
-  prompt=f"The following are descriptions about a scene. Some of them may be innaccurate. \
-    Create an accurate description based on the common features of the various descriptions. \
-    The new description should be in the same style as the original descriptions.\
+  prompt=f"The following are possibilities about a scene. Some of them may be innaccurate. \
+    Create an accurate description based on the common features of the various possibilities. \
+    The new description should be in the same style as the original possibilities.\
+    As the possibilities may be inaccurate, rephrase the information in a less specific way.\
+    If any information is present in some, but not in the majority, of possibilities,\
+    try to omit that information. \
     extra instructions: {extra_instructions}\
-    descriptions: {descriptions}"
-  combined = chat_session.send_message(prompt).text
+    possibilities: {descriptions}"
+  combined = llm_response(prompt)
   print("Compbined description: "+combined)
   return combined
 
@@ -69,14 +72,17 @@ def clean_ocr_output(outputs, extra_instructions='none'):
     instead read whatever is legible, make guesses if needed. \
     extra instructions: {extra_instructions}\
     passages: {outputs_text}"
-  cleaned = chat_session.send_message(prompt).text
+  cleaned = llm_response(prompt)
   print("Cleaned OCR Output: "+cleaned)
   return cleaned
+
+def llm_response(prompt):
+  return chat_session.send_message(prompt).text
 
 if __name__=="__main__":
   while True:
     print('Enter your prompt:')
     prompt = input()
-    response = chat_session.send_message(prompt)
+    response = llm_response(prompt)
 
-    print(response.text)
+    print(response)
