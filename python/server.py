@@ -1,23 +1,41 @@
-from face_recognition import find_face
-from nlp_utils import combine_descriptions, clean_ocr_output
+from face_recognition import find_face, add_faces
+from barcode_qrcode import detect_barcode_or_qr
+from nlp_utils import combine_descriptions, clean_ocr_output, summarize_barcode_data
 import socket
 import cv2
 import numpy as np
 import base64
-# from object_detection import show_results_from_opencv_image 
+from object_detection import show_results_from_opencv_image as detect_objects
 import json
 from image_captioning import predict_step_from_rgb_images
 import time
 from sys import stdout
 import re
 from ocr_utils import image_to_string
-import random
-import os
-import string
+from deepface import DeepFace
+from threading import Lock, Thread
+from os import _exit
+import threading
 
 # Server settings
 HOST = '0.0.0.0'  # Bind to all network interfaces
 PORT = 55555      # Port to listen on
+client_socket = None
+
+heartbeat_counter = 0
+heartbeat_counter_limit = 150
+
+sending_lock = Lock()
+heartbeat_counter_lock = Lock()
+
+def send_to_client(data):
+    if client_socket:
+        sending_lock.acquire()
+        client_socket.send(data)
+        sending_lock.release()
+    else:
+        print("Error: No client connected!")
+        
 
 def sanitize_json(json_str):
     """
@@ -69,7 +87,7 @@ def ocr(json_data):
         results={"ocr_text":text}
         print(results)
         json_str = json.dumps(results)
-        client_socket.send(json_str.encode())
+        send_to_client(json_str.encode())
 
 
 def face_recognition(json_data):
@@ -94,7 +112,7 @@ def face_recognition(json_data):
             results={"face_name":"", "found_face":False}
         print(results)
         json_str = json.dumps(results)
-        client_socket.send(json_str.encode())
+        send_to_client(json_str.encode())
 
 def image_caption(json_data):
 
@@ -106,50 +124,79 @@ def image_caption(json_data):
         print("extra_instructions: "+extra_instructions)
         stdout.flush()
 
-        for base64_string in base64_strings:
-            image_data = base64.b64decode(base64_string)
+        if len(base64_strings) > 1:
+
+            for base64_string in base64_strings:
+                image_data = base64.b64decode(base64_string)
+                nparr = np.frombuffer(image_data, np.uint8)
+                image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # image = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+                images.append(image)
+
+            start_time = time.time()
+            descriptions = predict_step_from_rgb_images(images)
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print(f"Time to generate descriptions: {execution_time}")
+
+            caption = combine_descriptions(descriptions, extra_instructions=extra_instructions)
+
+        else:
+            image_data = base64.b64decode(base64_strings[0])
             nparr = np.frombuffer(image_data, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            # image = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
             images.append(image)
 
-        start_time = time.time()
-        descriptions = predict_step_from_rgb_images(images)
-        end_time = time.time()
-        execution_time = end_time - start_time
-        print(f"Time to generate descriptions: {execution_time}")
+            start_time = time.time()
+            descriptions = predict_step_from_rgb_images(images)
+            end_time = time.time()
+            execution_time = end_time - start_time
+            print(f"Time to generate description: {execution_time}")
 
-        caption = combine_descriptions(descriptions, extra_instructions=extra_instructions)
+            caption = descriptions[0]
+
+
         results = {"image_caption":caption}
         print(results)
         json_str = json.dumps(results)
-        client_socket.send(json_str.encode())
+        send_to_client(json_str.encode())
 
-def save_photos_with_unique_names(images, name):
-    # Ensure the face_db directory exists
-    folder_path = "face_db"
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
+def count_objects(json_data):
+    print("Counting objects...")
 
-    saved_file_names = []  # Keep track of saved file names to ensure uniqueness
+    images = []
+    base64_strings = json_data["images"]
+    extra_instructions = json_data["extra_instructions"]
+    print("extra_instructions: "+extra_instructions)
+    stdout.flush()
 
-    for idx, image in enumerate(images):
-        while True:
-            # Generate a unique random number as a string
-            random_number = ''.join(random.choices(string.digits, k=5))
-            file_name = f"{name}_{random_number}.jpg"
-            file_path = os.path.join(folder_path, file_name)
+    # For now, only use one image
+    # for base64_string in base64_strings:
+    #     image_data = base64.b64decode(base64_string)
+    #     nparr = np.frombuffer(image_data, np.uint8)
+    #     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    #     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    #     images.append(image)
+    
+    if base64_strings:
+        base64_string = base64_strings[0]
+        image_data = base64.b64decode(base64_string)
+        nparr = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-            # Check if the file name is unique
-            if file_name not in saved_file_names and not os.path.exists(file_path):
-                break
-
-        # Save the image
-        cv2.imwrite(file_path, image)
-        saved_file_names.append(file_name)  # Add to the list of saved file names
-
-        print(f"Image {idx + 1} saved as: {file_path}")
+        start_time = time.time()
+        detected_objects = detect_objects(image)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"Time to count objects: {execution_time}")
+        
+        results = {"objects":detected_objects}
+        print(results)
+        json_str = json.dumps(results)
+        send_to_client(json_str.encode())
 
 def add_face(json_data):
         print("Got JSON data")
@@ -168,16 +215,56 @@ def add_face(json_data):
             # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             # image = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
             images.append(image)
-        
-        save_photos_with_unique_names(images,name)
 
+        add_faces(images, name)
+        
         results = {"add_face":"success"}
         print(results)
         json_str = json.dumps(results)
-        client_socket.send(json_str.encode())
+        send_to_client(json_str.encode())
+
+
+def barcode_qrcode(json_data):
+    # Run the function in a new thread because the barcode information part
+    # may make an API call which blocks for a long time, which would otherwise
+    # pause heartbeat messages and cause the connection to be terminated
+    thread = threading.Thread(target=barcode_qrcode_new_thread, args=(json_data,))
+    thread.start()
+
+def barcode_qrcode_new_thread(json_data):
+    print("Looking for a bar code or QR code")
+
+    base64_strings = json_data["images"]
+    extra_instructions = json_data["extra_instructions"]
+    print("extra_instructions: "+extra_instructions)
+    stdout.flush()
+
+    # For now, only use one image    
+    if base64_strings:
+        base64_string = base64_strings[0]
+        image_data = base64.b64decode(base64_string)
+        nparr = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        results = detect_barcode_or_qr(image)
+        
+        if results:
+            print(results)
+            barcode_data = results['barcode_data']
+            if barcode_data:
+                summary = summarize_barcode_data(barcode_data, extra_instructions=extra_instructions)
+                results['barcode_data'] = summary
+            else:
+                results['barcode_data'] = "No data found"
+        else:
+            results = {"message":"I couldn't find any barcode or qr code"}
+        json_str = json.dumps(results)
+        send_to_client(json_str.encode())
+
         
 def run_command(json):
-    print("command: "+json["command"])
+    # print("command: "+json["command"])
     if json["command"]=="image_caption":
         image_caption(json)
     elif json["command"]=="ocr":
@@ -186,6 +273,55 @@ def run_command(json):
         face_recognition(json)
     elif json["command"]=="add_face":
         add_face(json)
+    elif json["command"]=="count_objects":
+        count_objects(json)
+    elif json["command"]=="barcode_qrcode":
+        barcode_qrcode(json)
+    elif json["command"]=="heartbeat_ack":
+        receive_heartbeat_ack()
+    elif json["command"]=="heartbeat":
+        send_heartbeat_ack()
+
+def send_heartbeat_ack():
+    send_to_client(('{"heartbeat_ack":"hello"}').encode())
+
+def receive_heartbeat_ack():
+    global heartbeat_counter
+    heartbeat_counter_lock.acquire()
+    heartbeat_counter = 0
+    heartbeat_counter_lock.release()
+
+def heartbeat(sleep_seconds=0.5):
+    global heartbeat_counter
+    while(True):
+        if client_socket and is_socket_connected(client_socket):
+        # if True:
+            msg = {"heartbeat":"hello"}
+            json_str = json.dumps(msg)
+            send_to_client(json_str.encode())
+            heartbeat_counter_lock.acquire()
+            heartbeat_counter += 1
+            if heartbeat_counter > heartbeat_counter_limit:
+                print("Terminating connection with client: No response to heartbeats")
+                try:
+                    client_socket.close()
+                except Exception:
+                    print("Something went wrong when terminating connection")
+            heartbeat_counter_lock.release()
+        time.sleep(sleep_seconds)
+
+def is_socket_connected(sock):
+    try:
+        sock.getpeername()
+        return True
+    except socket.error:
+        return False
+    
+def console():
+    while True:
+        str = input()
+        if str == 'quit' or str == 'exit':
+            _exit(1)
 
 if __name__=="__main__":
     # Create a TCP/IP socket
@@ -193,6 +329,12 @@ if __name__=="__main__":
 
     # Bind the socket to the address and port
     server_socket.bind((HOST, PORT))
+
+    heartbeat_thread = Thread(target=heartbeat)
+    heartbeat_thread.start()
+    
+    console_thread = Thread(target=console)
+    console_thread.start()
 
     # Enable the server to accept connections (max 1 connection in this case)
     server_socket.listen(1)
@@ -202,6 +344,8 @@ if __name__=="__main__":
         # Accept a connection
         client_socket, client_address = server_socket.accept()
         print(f"Connection from {client_address}")
+
+        heartbeat_counter = 0
 
         try:
             leftover = ''

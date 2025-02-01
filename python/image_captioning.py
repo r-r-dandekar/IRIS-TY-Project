@@ -9,12 +9,13 @@ feature_extractor = ViTImageProcessor.from_pretrained("nlpconnect/vit-gpt2-image
 tokenizer = AutoTokenizer.from_pretrained("nlpconnect/vit-gpt2-image-captioning")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("\n\n\n\nDEVICE: "+str(device)+"\n\n\n\n")
 model.to(device)
 
 
 
 max_length = 64
-# num_beams = 4
+num_beams = 4
 num_beams = 1
 gen_kwargs = {"max_length": max_length, "num_beams": num_beams}
 def predict_step_from_files(image_paths):

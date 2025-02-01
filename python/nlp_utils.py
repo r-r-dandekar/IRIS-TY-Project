@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 from os import environ
 import google.generativeai as genai
+from subprocess import run, CalledProcessError
+import time
 
 load_dotenv()
 gemini_api_key = environ.get('GEMINI_API_KEY')
@@ -25,14 +27,28 @@ chat_session = model.start_chat(
   ]
 )
 
+def summarize_barcode_data(data, extra_instructions='none'):
+  print("Original barcode data: "+str(data))
+  prompt=f"The following is detailed information about a product. Generate a short summary of this information,\
+    trying to include only that information which is needed for a layman, unless any extra instructions are given.\
+    If any extra instructions are given, follow those instructions.\
+    extra instructions: {extra_instructions}\
+    information: {data}"
+  combined = llm_response(prompt)
+  print("Summarized barcode data: "+combined)
+  return combined
+
 def combine_descriptions(descriptions, extra_instructions='none'):
   print("Original descriptions: "+str(descriptions))
-  prompt=f"The following are descriptions about a scene. Some of them may be innaccurate. \
-    Create an accurate description based on the common features of the various descriptions. \
-    The new description should be in the same style as the original descriptions.\
+  prompt=f"The following are possibilities about a scene. Some of them may be innaccurate. \
+    Create an accurate description based on the common features of the various possibilities. \
+    The new description should be in the same style as the original possibilities.\
+    As the possibilities may be inaccurate, rephrase the information in a less specific way.\
+    If any information is present in some, but not in the majority, of possibilities,\
+    try to omit that information. \
     extra instructions: {extra_instructions}\
-    descriptions: {descriptions}"
-  combined = chat_session.send_message(prompt).text
+    possibilities: {descriptions}"
+  combined = llm_response(prompt)
   print("Compbined description: "+combined)
   return combined
 
@@ -58,14 +74,56 @@ def clean_ocr_output(outputs, extra_instructions='none'):
     instead read whatever is legible, make guesses if needed. \
     extra instructions: {extra_instructions}\
     passages: {outputs_text}"
-  cleaned = chat_session.send_message(prompt).text
+  cleaned = llm_response(prompt)
   print("Cleaned OCR Output: "+cleaned)
   return cleaned
+
+def llm_response(prompt):
+  # For using Gemini
+  return chat_session.send_message(prompt).text
+
+  # For using DeepSeek via Ollama
+  # return get_response_from_ollama(model="deepseek-r1:1.5b", prompt=prompt)
+  
+  # For using TinyLLama via Ollama
+  # return get_response_from_ollama(model="tinyllama", prompt=prompt)
+
+def get_response_from_ollama(model, prompt):
+  try:
+    # Run Ollama and get response with UTF-8 decoding
+    start_time = time.time()
+    response = run(
+      ["ollama", "run", model, prompt], 
+      capture_output=True, 
+      text=True, 
+      encoding="utf-8", 
+      check=True  # Will raise an exception if Ollama fails
+    )
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print(f"Time to generate LLM response: {execution_time}")
+    
+    # Extract and clean the output
+    llm_output = response.stdout.strip()
+
+    # Check if we got a valid output
+    if llm_output:
+      return llm_output
+    else:
+      print("\nError: No response received! Make sure Ollama is running correctly.")
+      return ''
+
+  except CalledProcessError as e:
+      print(f"\nError calling Ollama: {e.stderr}")
+  except FileNotFoundError:
+      print("\nError: Ollama is not installed or not in the system path. Please install Ollama and ensure it's accessible.")
+  except Exception as e:
+      print(f"\nError: Unexpected error: {e}")
 
 if __name__=="__main__":
   while True:
     print('Enter your prompt:')
     prompt = input()
-    response = chat_session.send_message(prompt)
+    response = llm_response(prompt)
 
-    print(response.text)
+    print(response)

@@ -1,3 +1,4 @@
+*.pt
 *.iml
 *.iws
 *.ipr
@@ -19,4 +20,6 @@
 local.properties
 /python/venv
 /python/__pycache__
+/python/face_db
+/python/chroma_facedb
 .env

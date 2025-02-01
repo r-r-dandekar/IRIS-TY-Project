@@ -43,6 +43,9 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import kotlin.random.Random
+import android.media.AudioManager
+import java.net.InetSocketAddress
+
 
 class MainActivity : AppCompatActivity() {
     private lateinit var viewBinding: ActivityMainBinding
@@ -66,9 +69,14 @@ class MainActivity : AppCompatActivity() {
     // channel of base64 encoded images
     private val imageChannel = Channel<String>()
 
-    private var name = "App"
+    private var name = "Ivy"
 
     private var currentSocket: Socket? = null
+
+    private var heartbeatCounter: Int = 0
+    private val heartbeatCounterLimit: Int = 50
+
+    private val connectTimeoutMillis = 3000
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -88,9 +96,12 @@ class MainActivity : AppCompatActivity() {
             requestPermissions()
         }
 
+        val audio = getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager
+        audio.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, AudioManager.FLAG_SHOW_UI)
 
         startSendingTCPThread()
         startReceivingTCPThread()
+        startHeartbeatThread()
 
         // Set up the listeners for take photo and video capture buttons
         viewBinding.stopSpeakingButton.setOnClickListener { speak(" ") }
@@ -116,7 +127,8 @@ class MainActivity : AppCompatActivity() {
     private fun connectToServer(ipAddress: String, port: Int): Socket? {
         return try {
             // Establish TCP connection
-            val socket = Socket(ipAddress, port)
+            val socket = Socket()
+            socket.connect(InetSocketAddress(ipAddress, port), connectTimeoutMillis)
             println("Connected to server: $ipAddress:$port")
             socket
         } catch (e: Exception) {
@@ -129,13 +141,6 @@ class MainActivity : AppCompatActivity() {
         // Use coroutine scope to run the monitoring logic
         GlobalScope.launch {
             while (true) {
-                if (currentSocket == null || serverIPAddress != currentSocket?.inetAddress?.hostAddress || serverPortNumber != currentSocket?.port) {
-                    // Close the current socket if it's open
-                    currentSocket?.close()
-
-                    // Connect to the new server details
-                    currentSocket = connectToServer(serverIPAddress, serverPortNumber)
-                }
                 if (currentSocket != null) {
                     val socket = currentSocket ?: continue
                     val outputStream = socket.getOutputStream()
@@ -145,6 +150,45 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 delay(50) // Wait before checking again
+            }
+        }
+    }
+
+    private fun startHeartbeatThread() {
+        // This thread sends heartbeats, increments hearbeatCounter, and
+        // checks if the counter has exceeded its maximum limit
+        // This thread also handles connection to the server
+        // The receiving TCP thread hangles receiving heartbeat acks and
+        // resetting the counter
+        GlobalScope.launch {
+            var i = 0
+            while (true) {
+                if (currentSocket == null || serverIPAddress != currentSocket?.inetAddress?.hostAddress || serverPortNumber != currentSocket?.port) {
+                    // Close the current socket if it's open
+                    currentSocket?.close()
+
+                    // Connect to the new server details
+                    println("Trying to connect...")
+                    try {
+                        currentSocket = connectToServer(serverIPAddress, serverPortNumber)
+                    } catch (e: Exception) {
+                        println("Couldn't connect to server: $e")
+                    }
+                }
+                if (i==0 && currentSocket != null) {
+                    val socket = currentSocket ?: continue
+                    val json_heartbeat="{\"command\":\"heartbeat\"}"
+                    imageChannel.trySend(json_heartbeat)
+                    synchronized (this) {
+                        heartbeatCounter++
+                        if (heartbeatCounter > heartbeatCounterLimit) {
+                            println("No response to heartbeats: Closing socket")
+                            socket.close()
+                            currentSocket = null
+                        }
+                    }
+                }
+                delay(500) // Wait before checking again
             }
         }
     }
@@ -163,9 +207,7 @@ class MainActivity : AppCompatActivity() {
 
                         // Convert the received bytes to a string (or process as needed)
                         val receivedData = String(buffer)
-                        val speechString = formatJsonString(receivedData)
-                        println("Received data: $receivedData")
-                        speak(speechString)
+                        processReceivedMessage(receivedData)
                     }
                 }
                 delay(50) // Wait before checking again
@@ -173,7 +215,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun formatJsonString(jsonString: String): String {
+    private fun processReceivedMessage(jsonString: String) {
         // Parse the JSON string into a JSONObject
         val jsonObject = JSONObject(jsonString)
 
@@ -183,16 +225,53 @@ class MainActivity : AppCompatActivity() {
         if (jsonObject.has("image_caption")) {
             val value = jsonObject.getString("image_caption")
             result = "I see $value"
-        } else if (jsonObject.has("ocr_text")) {
+            speak(result)
+        }
+        if (jsonObject.has("objects")) {
+            val objects = jsonObject.getJSONObject("objects")
+
+            // Build the sentence
+            val list = mutableListOf<String>()
+            for (key in objects.keys()) {
+                val value = objects.getInt(key)
+                list.add("$value $key")
+            }
+            result = "I see " + list.joinToString(" and ")
+            speak(result)
+        }
+        if (jsonObject.has("ocr_text")) {
             val value = jsonObject.getString("ocr_text")
             result = value
-        } else if (jsonObject.has("found_face")) {
-            println("FACEEEE"+jsonObject.getString("found_face"))
-            result = jsonObject.getString("face_name")
+            speak(result)
         }
-
-        // Join the list into a single string with " and " separator
-        return result
+        if (jsonObject.has("found_face")) {
+            if (jsonObject.getString("found_face") == "false")
+                result = "I can't recognize this person"
+            else
+                result = "This is "+    jsonObject.getString("face_name")
+            speak(result)
+        }
+        if (jsonObject.has("qrcode")) {
+            result = "QR Code: "+jsonObject.getString("qrcode")
+            speak(result)
+        }
+        if (jsonObject.has("barcode")) {
+            result = "Barcode Data: "+jsonObject.getString("barcode_data")
+            speak(result)
+        }
+        if (jsonObject.has("message")) {
+            result = jsonObject.getString("message")
+            speak(result)
+        }
+        if (jsonObject.has("heartbeat")) {
+            val json_response="{\"command\":\"heartbeat_ack\"}"
+            imageChannel.trySend(json_response)
+        }
+        if (jsonObject.has("heartbeat_ack")) {
+            synchronized(this) {
+                heartbeatCounter = 0
+            }
+        }
     }
 
     private fun changeVoice() {
@@ -322,12 +401,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun add_face(imagePaths : MutableList<String> = mutableListOf(), name: String) {
-        multiImageCommand(imagePaths=imagePaths, count=1, extraInstructions=name, command = "add_face", resolutionFactor=700)
+        multiImageCommand(imagePaths=imagePaths, count=1, extraInstructions=name, command = "add_face", resolutionFactor=1000)
     }
     private fun face_recognition(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
-                    extraInstructions: String = "None") {
+                                 extraInstructions: String = "None") {
         multiImageCommand(imagePaths=imagePaths, count=count,
-            extraInstructions=extraInstructions, command="face_recognition", resolutionFactor=700)
+            extraInstructions=extraInstructions, command="face_recognition", resolutionFactor=1000)
+    }
+    private fun count_objects(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
+                              extraInstructions: String = "None") {
+        multiImageCommand(imagePaths=imagePaths, count=count,
+            extraInstructions=extraInstructions, command="count_objects")
+    }
+    private fun barcode_qrcode(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
+                              extraInstructions: String = "None") {
+        multiImageCommand(imagePaths=imagePaths, count=count,
+            extraInstructions=extraInstructions, command="barcode_qrcode")
     }
 
     private fun takePhoto() {
@@ -383,62 +472,123 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun speechDetected(data : ArrayList<String>) {
-        var str = data.joinToString(" ")
-        if (str.contains(name, ignoreCase = true)) {
-            str = str.lowercase().substringAfter(name.lowercase()+" ")
-            println(str)
-            if (str.contains("what do you see")) {
-                val extraInstructions = str.substringAfter("what do you see").trim()
-                describeScene(extraInstructions=extraInstructions)
-                lookingMessage()
-            }
-            if (str.contains("tell me what you see")) {
-                val extraInstructions = str.substringAfter("tell me what you see").trim()
-                describeScene(extraInstructions=extraInstructions)
-                lookingMessage()
-            }
-            if (str.contains("ocr")) {
-                val extraInstructions = str.substringAfter("ocr").trim()
-                ocr(extraInstructions=extraInstructions)
-                lookingMessage()
-            }
-            if (str.contains("read this")) {
-                val extraInstructions = str.substringAfter("read this").trim()
-                ocr(extraInstructions=extraInstructions)
-                lookingMessage()
-            }
-            if (str.contains("what is written")) {
-                val extraInstructions = str.substringAfter("what is written").trim()
-                ocr(extraInstructions=extraInstructions)
-                lookingMessage()
-            }
-            if (str.contains("who is this")) {
-                val extraInstructions = str.substringAfter("who is this").trim()
-                face_recognition(extraInstructions=extraInstructions)
-                lookingMessage()
-            }
-            if(str.contains("this is")){
-                val name = str.substringAfter("this is").trim()
-                add_face(name = name)
-                lookingMessage()
-            }
-            if (str.contains("count the objects")) {
-                // implement this
-            }
-            else if (str.equals("change your voice") ||
-                str.equals("change voice"))
-                changeVoice()
-            else if (str.equals("hello"))
-                speak("Hi")
-            else if (str.equals("hi"))
-                speak("Hello")
-            else if (str.contains("echo"))
-                speak(str.substringAfter("echo"))
-            else if (str.contains("say"))
-                speak(str.substringAfter("say"))
-            else if (str.contains("change your name to ")) {
-                name = str.substringAfter("change your name to").trim()
-                speak("My new name is $name")
+//        var str = data.joinToString(" ")
+        var match = false
+        for (possibility in data) {
+            if (match)      // if a command has already been identified for one of the
+                break       // possible sentences, don't look at the other possibilities
+            var str = possibility
+
+            // Detect name, or hardcoded alias 'IV' (later do the aliases thing programmatically)
+            if (str.contains(name, ignoreCase = true) || str.contains("IV", ignoreCase = true)
+                || str.contains("I we", ignoreCase = true)) {
+                if (str.contains(name, ignoreCase = true))
+                    str = str.lowercase().substringAfter(name.lowercase()+" ")
+                else if (str.contains("IV", ignoreCase = true))
+                    str = str.lowercase().substringAfter("iv ")
+                else if (str.contains("I we", ignoreCase = true))
+                    str = str.lowercase().substringAfter("i we ")
+                println(str)
+                if (str.contains("what do you see")) {
+                    val extraInstructions = str.substringAfter("what do you see").trim()
+                    describeScene(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("tell me what you see")) {
+                    val extraInstructions = str.substringAfter("tell me what you see").trim()
+                    describeScene(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("what is this")) {
+                    val extraInstructions = str.substringAfter("what is this").trim()
+                    describeScene(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("ocr")) {
+                    val extraInstructions = str.substringAfter("ocr").trim()
+                    ocr(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("read this")) {
+                    val extraInstructions = str.substringAfter("read this").trim()
+                    ocr(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("what is written")) {
+                    val extraInstructions = str.substringAfter("what is written").trim()
+                    ocr(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("who is this")) {
+                    val extraInstructions = str.substringAfter("who is this").trim()
+                    face_recognition(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if(str.contains("this is")){
+                    val name = str.substringAfter("this is").trim()
+                    add_face(name = name)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("count the object")) {
+                    val extraInstructions = str.substringAfter("count the object").trim()
+                    count_objects(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("count object")) {
+                    val extraInstructions = str.substringAfter("count object").trim()
+                    count_objects(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("what objects")) {
+                    val extraInstructions = str.substringAfter("what objects").trim()
+                    count_objects(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.contains("scan")) {
+                    val regex = Regex("(barcode|bar code|qr code)", RegexOption.IGNORE_CASE)
+                    // Replace all matches with an empty string
+                    val extraInstructions = regex.replace(str.substringAfter("scan").trim(), "").trim()
+                    barcode_qrcode(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                if (str.equals("change your voice") ||
+                    str.equals("change voice")) {
+                    changeVoice()
+                    match = true
+                }
+                if (str.equals("hello")) {
+                    speak("Hi")
+                    match = true
+                }
+                if (str.equals("hi")) {
+                    speak("Hello")
+                    match = true
+                }
+                if (str.contains("echo")) {
+                    speak(str.substringAfter("echo"))
+                    match = true
+                }
+                else if (str.contains("say")) {
+                    speak(str.substringAfter("say"))
+                    match = true
+                }
+                if (str.contains("change your name to ")) {
+                    name = str.substringAfter("change your name to").trim()
+                    speak("My new name is $name")
+                    match = true
+                }
             }
         }
     }
@@ -455,6 +605,10 @@ class MainActivity : AppCompatActivity() {
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
             )
+            putExtra(
+                RecognizerIntent.EXTRA_MAX_RESULTS,
+                10
+            )
         }
         speechRecognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(p0: Bundle?) {}
@@ -470,7 +624,7 @@ class MainActivity : AppCompatActivity() {
             override fun onEndOfSpeech() {}
 
             override fun onError(p0: Int) {
-                speechRecognizer.startListening(recognizerIntent)
+                startListening(speechRecognizer, recognizerIntent)
             }
 
             override fun onResults(results: Bundle)  {
@@ -479,13 +633,17 @@ class MainActivity : AppCompatActivity() {
                 if (data != null) {
                     speechDetected(data)
                 }
-                speechRecognizer.startListening(recognizerIntent)
+                startListening(speechRecognizer, recognizerIntent)
             }
 
             override fun onPartialResults(p0: Bundle?) {}
 
             override fun onEvent(p0: Int, p1: Bundle?) {}
         })
+        startListening(speechRecognizer, recognizerIntent)
+    }
+
+    private fun startListening(speechRecognizer: SpeechRecognizer, recognizerIntent: Intent) {
         speechRecognizer.startListening(recognizerIntent)
     }
 
