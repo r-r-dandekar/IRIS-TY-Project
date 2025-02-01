@@ -4,7 +4,7 @@ import socket
 import cv2
 import numpy as np
 import base64
-# from object_detection import show_results_from_opencv_image
+# from object_detection import show_results_from_opencv_image 
 import json
 from image_captioning import predict_step_from_rgb_images
 import time
