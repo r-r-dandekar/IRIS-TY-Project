@@ -1,5 +1,5 @@
 from face_recognition import find_face, add_faces
-from barcode_qrcode import detect_barcode_or_qr
+from barcode_qrcode import detect_barcode_or_qr, fetch_online_info
 from nlp_utils import combine_descriptions, clean_ocr_output, summarize_barcode_data
 import socket
 import cv2
@@ -224,43 +224,61 @@ def add_face(json_data):
         send_to_client(json_str.encode())
 
 
-def barcode_qrcode(json_data):
+def barcode(json_data):
     # Run the function in a new thread because the barcode information part
     # may make an API call which blocks for a long time, which would otherwise
     # pause heartbeat messages and cause the connection to be terminated
-    thread = threading.Thread(target=barcode_qrcode_new_thread, args=(json_data,))
+    thread = threading.Thread(target=barcode_new_thread, args=(json_data,))
     thread.start()
 
-def barcode_qrcode_new_thread(json_data):
+def barcode_new_thread(json_data):
     print("Looking for a bar code or QR code")
 
-    base64_strings = json_data["images"]
+    barcode_raw_value = json_data["barcode_raw_value"]
     extra_instructions = json_data["extra_instructions"]
     print("extra_instructions: "+extra_instructions)
+
+    print(barcode_raw_value)
     stdout.flush()
 
-    # For now, only use one image    
-    if base64_strings:
-        base64_string = base64_strings[0]
-        image_data = base64.b64decode(base64_string)
-        nparr = np.frombuffer(image_data, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    barcode_data = fetch_online_info(barcode_raw_value)
 
-        results = detect_barcode_or_qr(image)
+    print(barcode_data)
+    if barcode_data:
+        summary = summarize_barcode_data(barcode_data, extra_instructions=extra_instructions)
+        barcode_data = summary
+    else:
+        barcode_data = "No data found"
+
+    results = {"barcode":barcode_raw_value,"barcode_data":barcode_data}
+    print(results)
+    json_str = json.dumps(results)
+    send_to_client(json_str.encode())
+
+
+    # OLD METHOD: USE AN IMAGE
+    # # For now, only use one image    
+    # if base64_strings:
+    #     base64_string = base64_strings[0]
+    #     image_data = base64.b64decode(base64_string)
+    #     nparr = np.frombuffer(image_data, np.uint8)
+    #     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    #     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    #     results = detect_barcode_or_qr(image)
         
-        if results:
-            print(results)
-            barcode_data = results['barcode_data']
-            if barcode_data:
-                summary = summarize_barcode_data(barcode_data, extra_instructions=extra_instructions)
-                results['barcode_data'] = summary
-            else:
-                results['barcode_data'] = "No data found"
-        else:
-            results = {"message":"I couldn't find any barcode or qr code"}
-        json_str = json.dumps(results)
-        send_to_client(json_str.encode())
+    #     if results:
+    #         print(results)
+    #         barcode_data = results['barcode_data']
+    #         if barcode_data:
+    #             summary = summarize_barcode_data(barcode_data, extra_instructions=extra_instructions)
+    #             results['barcode_data'] = summary
+    #         else:
+    #             results['barcode_data'] = "No data found"
+    #     else:
+    #         results = {"message":"I couldn't find any barcode or qr code"}
+    #     json_str = json.dumps(results)
+    #     send_to_client(json_str.encode())
 
         
 def run_command(json):
@@ -275,8 +293,8 @@ def run_command(json):
         add_face(json)
     elif json["command"]=="count_objects":
         count_objects(json)
-    elif json["command"]=="barcode_qrcode":
-        barcode_qrcode(json)
+    elif json["command"]=="barcode":
+        barcode(json)
     elif json["command"]=="heartbeat_ack":
         receive_heartbeat_ack()
     elif json["command"]=="heartbeat":

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">CameraTesting</string>
+    <string name="app_name">IRIS</string>
     <string name="stop_speaking">Stop Speaking</string>
     <string name="stop_capture">Stop Capture</string>
     <string name="server_ip_address_label">Server IP Address:</string>

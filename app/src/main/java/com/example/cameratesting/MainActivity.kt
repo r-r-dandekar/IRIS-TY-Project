@@ -39,16 +39,46 @@ import androidx.camera.core.ImageCapture.OnImageSavedCallback
 import kotlinx.coroutines.channels.Channel
 import java.io.IOException
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import kotlin.random.Random
 import android.media.AudioManager
+import androidx.camera.core.ImageAnalysis
+import com.example.cameratesting.ml.SsdMobilenetV11Metadata1
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.objects.DetectedObject
+import com.google.mlkit.vision.objects.ObjectDetection
+import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
+import org.tensorflow.lite.support.common.FileUtil
+import org.tensorflow.lite.support.image.ImageProcessor
+import org.tensorflow.lite.support.image.TensorImage
+import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.net.InetSocketAddress
 
 
 class MainActivity : AppCompatActivity() {
     private lateinit var viewBinding: ActivityMainBinding
+
+    private lateinit var labels: List<String>
+    private var mostDominantObject: String? = null
+    private var mostDominantObjectScore: Float = 0f
+    private val paint = Paint()
+    private val objectDetectionColors = listOf<Int>(Color.BLUE, Color.GREEN, Color.RED, Color.CYAN, Color.GRAY, Color.BLACK,
+        Color.DKGRAY, Color.MAGENTA, Color.YELLOW, Color.RED)
+//    private lateinit var imageView: ImageView
+
+    private lateinit var model: SsdMobilenetV11Metadata1
+
+    private lateinit var imageProcessor: ImageProcessor
+
+    val scanner = BarcodeScanning.getClient()
 
     private var imageCapture: ImageCapture? = null
 
@@ -69,7 +99,7 @@ class MainActivity : AppCompatActivity() {
     // channel of base64 encoded images
     private val imageChannel = Channel<String>()
 
-    private var name = "Ivy"
+    private var name = "IRIS"
 
     private var currentSocket: Socket? = null
 
@@ -77,6 +107,19 @@ class MainActivity : AppCompatActivity() {
     private val heartbeatCounterLimit: Int = 50
 
     private val connectTimeoutMillis = 3000
+
+    private var barcodeCounter = 0
+    private var barcodeExtraInstructions = ""
+
+    private var objectDetectionCounter = 0
+    private var objectDetectionExtraInstructions = ""
+    private var objectSpeakCounter = 0
+
+    val objectDetectionOptions = ObjectDetectorOptions.Builder()
+        .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
+        .enableClassification()  // Optional
+        .build()
+    val objectDetector = ObjectDetection.getClient(objectDetectionOptions)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,9 +145,17 @@ class MainActivity : AppCompatActivity() {
         startSendingTCPThread()
         startReceivingTCPThread()
         startHeartbeatThread()
+        startBarcodeListener()
+        startObjectDetectionListener()
 
         // Set up the listeners for take photo and video capture buttons
         viewBinding.stopSpeakingButton.setOnClickListener { speak(" ") }
+
+        labels = FileUtil.loadLabels(this, "labels.txt")
+        imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build()
+        model = SsdMobilenetV11Metadata1.newInstance(this)
+
+//        imageView = findViewById(R.id.viewFinder)
 
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
@@ -215,6 +266,41 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun startBarcodeListener() {
+        GlobalScope.launch {
+            while (true) {
+                if (barcodeCounter > 0) {
+                    barcode_qrcode(extraInstructions = barcodeExtraInstructions)
+                    delay(50) // Wait before checking again
+                }
+                else {
+                    delay(250)
+                    barcodeCounter--
+                }
+            }
+        }
+    }
+
+    private fun startObjectDetectionListener() {
+        GlobalScope.launch {
+            while (true) {
+                if (objectDetectionCounter > 0)
+                    objectDetectionCounter--
+                if (objectSpeakCounter > 0)
+                    objectSpeakCounter--
+                delay(50)
+//                if (objectDetectionCounter > 0) {
+//                    objectDetection(extraInstructions = objectDetectionExtraInstructions)
+//                    delay(500) // Wait before checking again
+//                }
+//                else {
+//                    delay(1500)
+//                }
+            }
+        }
+    }
+
     private fun processReceivedMessage(jsonString: String) {
         // Parse the JSON string into a JSONObject
         val jsonObject = JSONObject(jsonString)
@@ -307,7 +393,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun produceImages(savedPaths: MutableList<String>, extraInstructions:String="None",
-                              command : String, resolutionFactor : Int = 400) {
+                              command : String, resolutionFactor : Int = 100) {
         val base64Images : MutableList<String> = mutableListOf()
         for (savedPath in savedPaths) {
             val file = File(savedPath)
@@ -374,7 +460,8 @@ class MainActivity : AppCompatActivity() {
                                 command=command, resolutionFactor)
                 }
                 else {
-                    Thread.sleep(150)
+                    Thread.sleep(10)
+                    println("HELLOO "+count)
                     multiImageCommand(imagePaths, count-1, extraInstructions=extraInstructions,
                         command=command, resolutionFactor)
                 }
@@ -413,10 +500,112 @@ class MainActivity : AppCompatActivity() {
         multiImageCommand(imagePaths=imagePaths, count=count,
             extraInstructions=extraInstructions, command="count_objects")
     }
-    private fun barcode_qrcode(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
-                              extraInstructions: String = "None") {
-        multiImageCommand(imagePaths=imagePaths, count=count,
-            extraInstructions=extraInstructions, command="barcode_qrcode")
+    private fun barcode_qrcode(extraInstructions : String = "") {
+        val imageCapture = imageCapture ?: return
+
+        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+        val tempFile = File(this.cacheDir, "$name.jpg")
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
+
+        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object : OnImageSavedCallback {
+
+            // This method is invoked when the image is saved successfully
+            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                // Path of the saved image in the temporary directory
+                val savedPath = tempFile.absolutePath
+                println("Image saved at: $savedPath")
+                val bitmap = BitmapFactory.decodeFile(savedPath)
+                val inputImage = InputImage.fromBitmap(bitmap, 0)
+//                var gotBarcode = false
+                val result = scanner.process(inputImage)
+                    .addOnSuccessListener { barcodes ->
+//                        gotBarcode = true
+                        for (barcode in barcodes) {
+                            barcodeCounter = 0
+                            val bounds = barcode.boundingBox
+                            val corners = barcode.cornerPoints
+
+                            val rawValue = barcode.rawValue
+
+                            val valueType = barcode.valueType
+                            // See API reference for complete list of supported types
+                            when (valueType) {
+                                Barcode.TYPE_PRODUCT -> {
+                                    speak("Found a product barcode. Checking for product information...")
+                                    val json ="{\"command\":\"barcode\",\"barcode_raw_value\":\"$rawValue\",\"extra_instructions\":\"$extraInstructions\"}"
+                                    imageChannel.trySend(json)
+                                }
+                                Barcode.TYPE_URL -> {
+                                    speak("URL barcode: $rawValue")
+                                }
+                            }
+                        }
+                    }
+                    .addOnFailureListener {
+                    }
+//                if (!gotBarcode)
+//                    speak("no barcode found")
+            }
+
+            // This method is invoked if there is an error during image capture
+            override fun onError(exception: ImageCaptureException) {
+                // Handle errors in image capture
+                exception.printStackTrace()
+            }
+        })
+    }
+
+
+    private fun objectDetection(extraInstructions : String = "") {
+        val imageCapture = imageCapture ?: return
+
+        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+        val tempFile = File(this.cacheDir, "$name.jpg")
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
+
+        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object : OnImageSavedCallback {
+
+            // This method is invoked when the image is saved successfully
+            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                // Path of the saved image in the temporary directory
+                val savedPath = tempFile.absolutePath
+                println("Image saved at: $savedPath")
+                val bitmap = BitmapFactory.decodeFile(savedPath)
+                val inputImage = InputImage.fromBitmap(bitmap, 0)
+                println("HELOEHIUYHBINJU")
+                val result = objectDetector.process(inputImage)
+                    .addOnSuccessListener { detectedObjects ->
+                        for (detectedObject in detectedObjects) {
+                            println(detectedObject)
+                            val boundingBox = detectedObject.boundingBox
+                            val trackingId = detectedObject.trackingId
+                            for (label in detectedObject.labels) {
+                                val text = label.text
+                                println(text)
+                                speak(text)
+//                                if (PredefinedCategory.FOOD == text) {
+//                                    speak("Food: $text")
+//                                }
+//                                val index = label.index
+//                                if (PredefinedCategory.FOOD_INDEX == index) {
+//                                    speak("Food Index: $text")
+//                                }
+                                val confidence = label.confidence
+                            }
+                        }
+                    }
+                    .addOnFailureListener {
+                    }
+//                if (!gotBarcode)
+//                    speak("no barcode found")
+            }
+
+            // This method is invoked if there is an error during image capture
+            override fun onError(exception: ImageCaptureException) {
+                // Handle errors in image capture
+                exception.printStackTrace()
+            }
+        })
     }
 
     private fun takePhoto() {
@@ -479,15 +668,18 @@ class MainActivity : AppCompatActivity() {
                 break       // possible sentences, don't look at the other possibilities
             var str = possibility
 
-            // Detect name, or hardcoded alias 'IV' (later do the aliases thing programmatically)
-            if (str.contains(name, ignoreCase = true) || str.contains("IV", ignoreCase = true)
-                || str.contains("I we", ignoreCase = true)) {
+            // Detect name, or hardcoded aliases for 'IRIS'
+            if (str.contains(name, ignoreCase = true) || str.contains("Irish", ignoreCase = true)
+                || str.contains("I guess", ignoreCase = true)
+                || str.contains("I reached", ignoreCase = true)) {
                 if (str.contains(name, ignoreCase = true))
                     str = str.lowercase().substringAfter(name.lowercase()+" ")
-                else if (str.contains("IV", ignoreCase = true))
-                    str = str.lowercase().substringAfter("iv ")
-                else if (str.contains("I we", ignoreCase = true))
-                    str = str.lowercase().substringAfter("i we ")
+                else if (str.contains("Irish", ignoreCase = true))
+                    str = str.lowercase().substringAfter("irish ")
+                else if (str.contains("I guess", ignoreCase = true))
+                    str = str.lowercase().substringAfter("i guess ")
+                else if (str.contains("I reached", ignoreCase = true))
+                    str = str.lowercase().substringAfter("i reached ")
                 println(str)
                 if (str.contains("what do you see")) {
                     val extraInstructions = str.substringAfter("what do you see").trim()
@@ -543,24 +735,39 @@ class MainActivity : AppCompatActivity() {
                     lookingMessage()
                     match = true
                 }
-                if (str.contains("count object")) {
-                    val extraInstructions = str.substringAfter("count object").trim()
-                    count_objects(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("what objects")) {
-                    val extraInstructions = str.substringAfter("what objects").trim()
-                    count_objects(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
+//                if (str.contains("count object")) {
+//                    val extraInstructions = str.substringAfter("count object").trim()
+//                    count_objects(extraInstructions=extraInstructions)
+//                    lookingMessage()
+//                    match = true
+//                }
+//                if (str.contains("what objects")) {
+//                    val extraInstructions = str.substringAfter("what objects").trim()
+//                    count_objects(extraInstructions=extraInstructions)
+//                    lookingMessage()
+//                    match = true
+//                }
                 if (str.contains("scan")) {
                     val regex = Regex("(barcode|bar code|qr code)", RegexOption.IGNORE_CASE)
                     // Replace all matches with an empty string
-                    val extraInstructions = regex.replace(str.substringAfter("scan").trim(), "").trim()
-                    barcode_qrcode(extraInstructions=extraInstructions)
-                    lookingMessage()
+                    barcodeExtraInstructions = regex.replace(str.substringAfter("scan").trim(), "").trim()
+                    barcodeCounter=50000
+
+                    speak("Looking for barcodes")
+                    match = true
+                }
+                if (str.contains("object")) {
+                    if (str.contains("stop")) {
+                        objectDetectionCounter=0
+                        objectSpeakCounter=0
+                        speak("No longer looking for objects")
+                    }
+                    else {
+                        objectDetectionExtraInstructions = str.substringAfter("object").trim()
+                        objectDetectionCounter=1000
+                        objectSpeakCounter=50
+                        speak("Looking for objects")
+                    }
                     match = true
                 }
                 if (str.equals("change your voice") ||
@@ -662,6 +869,26 @@ class MainActivity : AppCompatActivity() {
                     it.surfaceProvider = previewView.surfaceProvider
                 }
 
+            val imageAnalysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .also {
+                    it.setAnalyzer(cameraExecutor, { imageProxy ->
+                        runOnUiThread {
+                            val bitmap = previewView.bitmap
+                            if (bitmap != null) {
+                                processFrameForObjectDetection(bitmap)
+//                                val image = InputImage.fromBitmap(bitmap, 0)
+//                                objectDetector.process(image)
+//                                    .addOnSuccessListener { detectedObjects ->
+//                                        objectsDetected(detectedObjects)
+//                                    }
+                            }
+                        }
+                        imageProxy.close()
+                    })
+                }
+
             // Select back camera as a default
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -677,7 +904,8 @@ class MainActivity : AppCompatActivity() {
 
                 // Bind use cases to camera
                 cameraProvider.bindToLifecycle(
-                    this, cameraSelector, preview, imageCapture)
+                    this, cameraSelector, preview, imageCapture, imageAnalysis
+                )
 
             } catch(exc: Exception) {
                 Log.e(TAG, "Use case binding failed", exc)
@@ -746,4 +974,92 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private fun processFrameForObjectDetection(bitmap: Bitmap) {
+        val image = TensorImage.fromBitmap(bitmap)
+        val processedImage = imageProcessor.process(image)
+
+        // Run object detection
+        val outputs = model.process(processedImage)
+        val locations = outputs.locationsAsTensorBuffer.floatArray
+        val classes = outputs.classesAsTensorBuffer.floatArray
+        val scores = outputs.scoresAsTensorBuffer.floatArray
+
+        // Find the most dominant object
+        var maxScore = 0f
+        var dominantObject = ""
+        var dominantIndex = -1
+        scores.forEachIndexed { index, score ->
+            if (score > maxScore) {
+                maxScore = score
+                dominantObject = labels[classes[index].toInt()]
+                dominantIndex = index
+            }
+        }
+
+        // If the most dominant object has changed, update it
+        if (dominantObject != mostDominantObject) {
+            mostDominantObject = dominantObject
+            mostDominantObjectScore = maxScore
+            println("$mostDominantObject : $maxScore")
+
+            println("$objectDetectionCounter $objectSpeakCounter")
+            if (objectDetectionCounter > 0 && objectSpeakCounter == 0 && maxScore > 0.5) {
+                speak(mostDominantObject!!)
+                objectSpeakCounter = 50
+            }
+//            if (!isSpeaking) {
+//                speakDominantObject()
+//            }
+        }
+
+        // Draw bounding boxes and labels on the bitmap
+        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(mutableBitmap)
+
+        val h = mutableBitmap.height
+        val w = mutableBitmap.width
+        paint.textSize = h / 15f
+        paint.strokeWidth = h / 85f
+
+        scores.forEachIndexed { index, score ->
+            if (score > 0.5) {
+                val x = index * 4
+                paint.color = objectDetectionColors[index % objectDetectionColors.size]
+                paint.style = Paint.Style.STROKE
+                canvas.drawRect(
+                    RectF(
+                        locations[x + 1] * w,
+                        locations[x] * h,
+                        locations[x + 3] * w,
+                        locations[x + 2] * h
+                    ), paint
+                )
+                paint.style = Paint.Style.FILL
+                val label = "${labels[classes[index].toInt()]} $score"
+                canvas.drawText(
+                    label,
+                    locations[x + 1] * w,
+                    locations[x] * h,
+                    paint
+                )
+            }
+        }
+    }
+
+
+    private fun objectsDetected(detectedObjects: MutableList<DetectedObject>) {
+        for (detectedObject in detectedObjects) {
+//            val boundingBox = detectedObject.boundingBox
+//            val trackingId = detectedObject.trackingId
+            for (label in detectedObject.labels) {
+                val text = label.text
+                val confidence = label.confidence
+                println(text)
+                if (objectDetectionCounter > 0 && objectSpeakCounter == 0) {
+                    speak(text)
+                    objectSpeakCounter = 50
+                }
+            }
+        }
+    }
 }
