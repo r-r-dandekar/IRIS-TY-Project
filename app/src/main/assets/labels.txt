@@ -2,16 +2,16 @@ person
 bicycle
 car
 motorcycle
-airplane
+table
 bus
 train
 truck
 boat
 traffic light
-fire hydrant
+pole
 ???
-stop sign
-parking meter
+sign
+pole
 bench
 bird
 cat
@@ -19,10 +19,10 @@ dog
 horse
 sheep
 cow
-elephant
+bag
 bear
-zebra
-giraffe
+dog
+dog
 ???
 backpack
 umbrella
@@ -38,12 +38,12 @@ sports ball
 kite
 baseball bat
 baseball glove
-skateboard
-surfboard
+pen
+pen
 tennis racket
 bottle
 ???
-wine glass
+glass
 cup
 fork
 knife

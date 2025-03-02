@@ -367,6 +367,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeAliases() {
+        aliasMatcher.addAlias(Alias("explain", arrayListOf("i", "explain", "give details", "elaborate")))
         aliasMatcher.addAlias(Alias("IRIS", arrayListOf("Iris", "Irish", "I guess", "I reached", "I just")))
         aliasMatcher.addAlias(Alias("what do you see", arrayListOf("What do you see", "Tell me what you see", "Describe the scene", "What’s in front of me", "What is in front of me", "Look around", "Explain the view", "Explain the scene")))
         aliasMatcher.addAlias(Alias("what is written", arrayListOf("What is written", "Read the text", "What does it say", "Tell me the text", "Read aloud", "Can you read this", "Read what is in front", "Read what's is in front", "Extract the words", "Scan the text")))
@@ -376,8 +377,9 @@ class MainActivity : AppCompatActivity() {
         aliasMatcher.addAlias(Alias("change your name to", arrayListOf("change your name to")))
         aliasMatcher.addAlias(Alias("who is this", arrayListOf("Who is this", "Identify this person", "Recognize this face", "Tell me who this is", "Whose face is this?", "Can you recognize this person?", "Who am I looking at?")))
         aliasMatcher.addAlias(Alias("this is", arrayListOf("This is", "Remember this person as", "Add this face as", "Store this identity as", "Register this person as", "Memorize this person as", "Save this face as")))
-        aliasMatcher.addAlias(Alias("where am I", arrayListOf("where am I")))
+        aliasMatcher.addAlias(Alias("where am I", arrayListOf("where am I", "tell me where I am", "find my location", "tell the current location")))
         aliasMatcher.addAlias(Alias("change your voice", arrayListOf("change your voice")))
+        println("Hello There "+aliasMatcher.contains("Irislook for objects look for objects explain Irish this that something", "look for objects"))
     }
 
     private fun connectToServer(ipAddress: String, port: Int): Socket? {
@@ -936,6 +938,14 @@ class MainActivity : AppCompatActivity() {
                 }
                 else if (aliasMatcher.contains(str, "change your voice")) {
                     changeVoice()
+                    match = true
+                }
+                println(aliasMatcher.contains("explain this explain that", "explain"))
+                if (aliasMatcher.contains(str, "explain")) {
+                    println("EXPLAIN!!!")
+                    val json="{\"command\":\"llm\",\"prompt\":\"$str\"}"
+                    imageChannel.trySend(json)
+                    lookingMessage()
                     match = true
                 }
 //                else {
