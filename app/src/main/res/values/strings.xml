@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">CameraTesting</string>
+    <string name="app_name">IRIS</string>
     <string name="stop_speaking">Stop Speaking</string>
     <string name="stop_capture">Stop Capture</string>
     <string name="server_ip_address_label">Server IP Address:</string>
@@ -8,5 +8,8 @@
     <string name="server_default_port_number">55555</string>
     <string name="photos_per_capture_label">Photos Per Capture:</string>
     <string name="default_photos_per_capture">1</string>
+    <string name="debug_mode_label">Debug Mode:</string>
+    <string name="debug_mode_on">On</string>
+    <string name="debug_mode_off">Off</string>
 
 </resources>

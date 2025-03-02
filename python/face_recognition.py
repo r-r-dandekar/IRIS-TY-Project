@@ -7,27 +7,6 @@ import random
 
 db = VectorDatabase()
 
-
-def find_face_old(image):
-    filename = "{}.jpg".format(os.getpid())
-    cv2.imwrite(filename, image)
-    try:
-        dfs = DeepFace.find(
-            img_path = filename,
-            db_path = "face_db",
-        )
-        os.remove(filename)
-        if dfs:
-            frame = dfs[0]
-            first_match = frame['identity'].iloc[0]
-            face_name = os.path.splitext(os.path.basename(first_match))[0]
-            return face_name.split('_')[0]
-        else:
-            return None
-    except Exception:
-        return None
-    
-
 def find_face(image):
     filename = "{}.jpg".format(os.getpid())
     cv2.imwrite(filename, image)

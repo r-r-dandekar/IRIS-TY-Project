@@ -2,6 +2,7 @@ package com.example.cameratesting
 
 import android.os.Bundle
 import android.widget.EditText
+import android.widget.Switch
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 
@@ -15,16 +16,19 @@ class SettingsActivity : AppCompatActivity() {
         val serverIPAddressTextBox = findViewById<EditText>(R.id.serverIPAddress)
         val serverPortNumberTextBox = findViewById<EditText>(R.id.serverPortNumber)
         val photosPerCaptureTextBox = findViewById<EditText>(R.id.photosPerCapture)
+        val debugModeSwitch = findViewById<Switch>(R.id.debugMode)
 
         serverIPAddressTextBox.setText(sharedPreferences.getString("server_ip_address", getString(R.string.server_default_ip_address)) ?: getString(R.string.server_default_ip_address))
         serverPortNumberTextBox.setText(sharedPreferences.getString("server_port_number", getString(R.string.server_default_port_number)) ?: getString(R.string.server_default_port_number))
         photosPerCaptureTextBox.setText(sharedPreferences.getString("photos_per_capture", getString(R.string.default_photos_per_capture)) ?: getString(R.string.default_photos_per_capture))
+        debugModeSwitch.setChecked(sharedPreferences.getBoolean("debug_mode", false))
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 editor.putString("server_ip_address", serverIPAddressTextBox.text.toString())
                 editor.putString("server_port_number", serverPortNumberTextBox.text.toString())
                 editor.putString("photos_per_capture", photosPerCaptureTextBox.text.toString())
+                editor.putBoolean("debug_mode", debugModeSwitch.isChecked)
                 editor.apply()
                 finish()
             }
