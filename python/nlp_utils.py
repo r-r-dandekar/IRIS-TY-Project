@@ -59,6 +59,7 @@ def clean_ocr_output(outputs, extra_instructions='none'):
     outputs_text += f"** PASSAGE {i} **{output}\n\n\n"
   print(outputs_text)
   prompt=f"You are an app meant to help the blind by reading the OCR output. \
+    Your target audience may be non-technical, so don't mention technical terms unless they are in the text \
     The following passages are OCR outputs of the same text. Due to slight variations in \
     the photos, the outputs are slightly different, but they are photos of the same text. \
     All of the passages are slightly innaccurate. Some of the passages may contain complete \
@@ -74,6 +75,7 @@ def clean_ocr_output(outputs, extra_instructions='none'):
     If you are not able to clearly read the whole text, focus on what you can see, and \
     keep the rest of the response short. Do not give a summary of the passage, \
     instead read whatever is legible, make guesses if needed. \
+    Try not to indicate that you don't know what is written. Instead make a guess about what is written if you are unsure.\
     extra instructions: {extra_instructions}\
     passages: {outputs_text}"
   cleaned = llm_response(prompt)

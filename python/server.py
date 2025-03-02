@@ -1,6 +1,6 @@
 from face_recognition import find_face, add_faces
 from barcode_qrcode import detect_barcode_or_qr, fetch_online_info
-from nlp_utils import combine_descriptions, clean_ocr_output, summarize_barcode_data
+from nlp_utils import combine_descriptions, clean_ocr_output, summarize_barcode_data, llm_response
 import socket
 import cv2
 import numpy as np
@@ -81,6 +81,7 @@ def ocr(json_data):
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
             text = image_to_string(image)
+            cv2.imwrite("temp.png", image)
             ocr_output.append(text)
 
         text = clean_ocr_output(ocr_output, extra_instructions=extra_instructions)
@@ -299,6 +300,22 @@ def run_command(json):
         receive_heartbeat_ack()
     elif json["command"]=="heartbeat":
         send_heartbeat_ack()
+    elif json["command"]=="llm":
+        llm_command(json)
+
+def llm_command(json_data):
+    print("Got JSON data")
+
+    prompt = json_data["prompt"]
+    print("prompt: "+prompt)
+    stdout.flush()
+
+    llm_output = llm_response(prompt)
+    print(llm_output)
+    results = {"message":llm_output}
+    
+    json_str = json.dumps(results)
+    send_to_client(json_str.encode())
 
 def send_heartbeat_ack():
     send_to_client(('{"heartbeat_ack":"hello"}').encode())
@@ -373,8 +390,6 @@ if __name__=="__main__":
                     break  # Connection closed
 
                 json_objects, leftover = extract_json_objects(data, leftover)
-
-                # print("hellloooo "+leftover)
 
                 for obj in json_objects:
                     run_command(obj)

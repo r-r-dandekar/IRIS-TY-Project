@@ -43,13 +43,24 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.location.Address
+import android.location.Geocoder
+import android.location.Location
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import kotlin.random.Random
 import android.media.AudioManager
+import android.opengl.Visibility
+import android.view.View.GONE
+import android.view.View.VISIBLE
+import androidx.annotation.RequiresApi
 import androidx.camera.core.ImageAnalysis
 import com.example.cameratesting.ml.SsdMobilenetV11Metadata1
+import com.example.cameratesting.ui.theme.Alias
+import com.example.cameratesting.ui.theme.AliasMatcher
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
@@ -61,6 +72,7 @@ import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.net.InetSocketAddress
+import java.net.SocketException
 
 
 class MainActivity : AppCompatActivity() {
@@ -82,9 +94,6 @@ class MainActivity : AppCompatActivity() {
 
     private var imageCapture: ImageCapture? = null
 
-    private var videoCapture: VideoCapture<Recorder>? = null
-    private var recording: Recording? = null
-
     private lateinit var cameraExecutor: ExecutorService
 
     private lateinit var previewView: PreviewView
@@ -93,13 +102,17 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var serverIPAddress : String
     private var serverPortNumber = 0
-
     private var photosPerCapture = 1
+    private var debugMode = false
+
+    private lateinit var fusedLocationClient : FusedLocationProviderClient;
 
     // channel of base64 encoded images
     private val imageChannel = Channel<String>()
 
     private var name = "IRIS"
+
+    private val LOCATION_PERMISSION_REQUEST_CODE = 1
 
     private var currentSocket: Socket? = null
 
@@ -115,12 +128,16 @@ class MainActivity : AppCompatActivity() {
     private var objectDetectionExtraInstructions = ""
     private var objectSpeakCounter = 0
 
+    private var aliasMatcher = AliasMatcher();
+    private var currentAddress: String? = null
+
     val objectDetectionOptions = ObjectDetectorOptions.Builder()
         .setDetectorMode(ObjectDetectorOptions.STREAM_MODE)
         .enableClassification()  // Optional
         .build()
     val objectDetector = ObjectDetection.getClient(objectDetectionOptions)
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
@@ -128,7 +145,11 @@ class MainActivity : AppCompatActivity() {
 
         previewView = findViewById(R.id.viewFinder)
 
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        initializeAliases()
         loadPreferences()
+        checkLocationPermission()
 
         // Request permissions
         if (allPermissionsGranted()) {
@@ -160,6 +181,82 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                LOCATION_PERMISSION_REQUEST_CODE
+            )
+        } else {
+            getLastKnownLocation()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+                getLastKnownLocation()
+            } else {
+                println("Location permission not granted!")
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun getLastKnownLocation() {
+        println("HELO ERTEWRT")
+        try {
+            fusedLocationClient.lastLocation
+                .addOnSuccessListener { location: Location? ->
+                    location?.let {
+                        val latitude = it.latitude
+                        val longitude = it.longitude
+                        println("You are at: "+latitude+" "+longitude)
+                        getAddressFromLocation(latitude, longitude)
+                    } ?: run {
+                        Log.e("Location", "Location is null")
+                    }
+                }
+                .addOnFailureListener { exception ->
+                    Log.e("Location", "Error getting location: ${exception.message}")
+                }
+        } catch (e: SecurityException) {
+            Log.e("Location", "SecurityException: ${e.message}")
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun getAddressFromLocation(latitude: Double, longitude: Double) {
+        val geocoder = Geocoder(this, Locale.getDefault())
+        val maxResults = 1
+
+        geocoder.getFromLocation(latitude, longitude, maxResults, object : Geocoder.GeocodeListener {
+            override fun onGeocode(addresses: MutableList<Address>) {
+                if (addresses.isNotEmpty()) {
+                    var address = addresses[0]
+                    currentAddress = address.getAddressLine(0).replace(address.postalCode, "")
+                } else {
+                    currentAddress = null
+                }
+            }
+
+            override fun onError(errorMessage: String?) {
+                // Handle error
+            }
+        })
+    }
+
+
+
     override fun onResume() {
         super.onResume()
         loadPreferences()
@@ -170,9 +267,29 @@ class MainActivity : AppCompatActivity() {
         serverIPAddress = sharedPreferences.getString("server_ip_address", getString(R.string.server_default_ip_address)) ?: getString(R.string.server_default_ip_address)
         serverPortNumber = (sharedPreferences.getString("server_port_number", getString(R.string.server_default_port_number)) ?: getString(R.string.server_default_port_number)).toInt()
         photosPerCapture = (sharedPreferences.getString("photos_per_capture", getString(R.string.default_photos_per_capture)) ?: getString(R.string.default_photos_per_capture)).toInt()
+        debugMode = (sharedPreferences.getBoolean("debug_mode", false))
         println("Server IP Address: $serverIPAddress")
         println("Server Port Number: $serverPortNumber")
         println("Photos Per Capture: $photosPerCapture")
+        println("Debug Mode: $debugMode")
+        if (debugMode)
+            viewBinding.stopSpeakingButton.visibility = VISIBLE
+        else
+            viewBinding.stopSpeakingButton.visibility = GONE
+    }
+
+    private fun initializeAliases() {
+        aliasMatcher.addAlias(Alias("IRIS", arrayListOf("Iris", "Irish", "I guess", "I reached", "I just")))
+        aliasMatcher.addAlias(Alias("what do you see", arrayListOf("What do you see", "Tell me what you see", "Describe the scene", "What’s in front of me", "What is in front of me", "Look around", "Explain the view", "Explain the scene")))
+        aliasMatcher.addAlias(Alias("what is written", arrayListOf("What is written", "Read the text", "What does it say", "Tell me the text", "Read aloud", "Can you read this", "Read what is in front", "Read what's is in front", "Extract the words", "Scan the text")))
+        aliasMatcher.addAlias(Alias("count the object", arrayListOf("Count the object", "How many objects?", "Tell me the number of objects", "How many things are there?", "Number of objects?")))
+        aliasMatcher.addAlias(Alias("look for objects", arrayListOf("Look for object", "Find object", "Detect object", "Identify things", "Spot object", "Scan for object", "Recognize object", "What objects are there?")))
+        aliasMatcher.addAlias(Alias("scan", arrayListOf("Scan")))
+        aliasMatcher.addAlias(Alias("change your name to", arrayListOf("change your name to")))
+        aliasMatcher.addAlias(Alias("who is this", arrayListOf("Who is this", "Identify this person", "Recognize this face", "Tell me who this is", "Whose face is this?", "Can you recognize this person?", "Who am I looking at?")))
+        aliasMatcher.addAlias(Alias("this is", arrayListOf("This is", "Remember this person as", "Add this face as", "Store this identity as", "Register this person as", "Memorize this person as", "Save this face as")))
+        aliasMatcher.addAlias(Alias("where am I", arrayListOf("where am I")))
+        aliasMatcher.addAlias(Alias("change your voice", arrayListOf("change your voice")))
     }
 
     private fun connectToServer(ipAddress: String, port: Int): Socket? {
@@ -192,13 +309,17 @@ class MainActivity : AppCompatActivity() {
         // Use coroutine scope to run the monitoring logic
         GlobalScope.launch {
             while (true) {
-                if (currentSocket != null) {
-                    val socket = currentSocket ?: continue
-                    val outputStream = socket.getOutputStream()
-                    for (base64Image in imageChannel) {
-                        outputStream.write(base64Image.toByteArray())
-                        outputStream.flush()
+                try {
+                    if (currentSocket != null) {
+                        val socket = currentSocket ?: continue
+                        val outputStream = socket.getOutputStream()
+                        for (base64Image in imageChannel) {
+                            outputStream.write(base64Image.toByteArray())
+                            outputStream.flush()
+                        }
                     }
+                } catch (e : SocketException) {
+                    println("Encountered SocketException in sending TCP thread!")
                 }
                 delay(50) // Wait before checking again
             }
@@ -440,7 +561,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun multiImageCommand(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
-                              extraInstructions: String = "None", command : String, resolutionFactor: Int = 400) {
+                              extraInstructions: String = "None", command : String, resolutionFactor: Int = 200) {
         val imageCapture = imageCapture ?: return
 
         val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
@@ -461,7 +582,6 @@ class MainActivity : AppCompatActivity() {
                 }
                 else {
                     Thread.sleep(10)
-                    println("HELLOO "+count)
                     multiImageCommand(imagePaths, count-1, extraInstructions=extraInstructions,
                         command=command, resolutionFactor)
                 }
@@ -484,7 +604,7 @@ class MainActivity : AppCompatActivity() {
     private fun ocr(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
                               extraInstructions: String = "None") {
         multiImageCommand(imagePaths=imagePaths, count=count,
-            extraInstructions=extraInstructions, command="ocr", resolutionFactor=700)
+            extraInstructions=extraInstructions, command="ocr", resolutionFactor=1200)
     }
 
     private fun add_face(imagePaths : MutableList<String> = mutableListOf(), name: String) {
@@ -572,7 +692,6 @@ class MainActivity : AppCompatActivity() {
                 println("Image saved at: $savedPath")
                 val bitmap = BitmapFactory.decodeFile(savedPath)
                 val inputImage = InputImage.fromBitmap(bitmap, 0)
-                println("HELOEHIUYHBINJU")
                 val result = objectDetector.process(inputImage)
                     .addOnSuccessListener { detectedObjects ->
                         for (detectedObject in detectedObjects) {
@@ -664,117 +783,76 @@ class MainActivity : AppCompatActivity() {
 //        var str = data.joinToString(" ")
         var match = false
         for (possibility in data) {
+            println("Speech Possibility: $possibility")
             if (match)      // if a command has already been identified for one of the
                 break       // possible sentences, don't look at the other possibilities
-            var str = possibility
 
-            // Detect name, or hardcoded aliases for 'IRIS'
-            if (str.contains(name, ignoreCase = true) || str.contains("Irish", ignoreCase = true)
-                || str.contains("I guess", ignoreCase = true)
-                || str.contains("I reached", ignoreCase = true)) {
-                if (str.contains(name, ignoreCase = true))
-                    str = str.lowercase().substringAfter(name.lowercase()+" ")
-                else if (str.contains("Irish", ignoreCase = true))
-                    str = str.lowercase().substringAfter("irish ")
-                else if (str.contains("I guess", ignoreCase = true))
-                    str = str.lowercase().substringAfter("i guess ")
-                else if (str.contains("I reached", ignoreCase = true))
-                    str = str.lowercase().substringAfter("i reached ")
+            var str = aliasMatcher.remove(possibility, name)
+
+            if (str != null) {
                 println(str)
-                if (str.contains("what do you see")) {
-                    val extraInstructions = str.substringAfter("what do you see").trim()
-                    describeScene(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("tell me what you see")) {
-                    val extraInstructions = str.substringAfter("tell me what you see").trim()
-                    describeScene(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("what is this")) {
-                    val extraInstructions = str.substringAfter("what is this").trim()
-                    describeScene(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("ocr")) {
-                    val extraInstructions = str.substringAfter("ocr").trim()
-                    ocr(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("read this")) {
-                    val extraInstructions = str.substringAfter("read this").trim()
-                    ocr(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("what is written")) {
-                    val extraInstructions = str.substringAfter("what is written").trim()
-                    ocr(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("who is this")) {
-                    val extraInstructions = str.substringAfter("who is this").trim()
-                    face_recognition(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-                if(str.contains("this is")){
-                    val name = str.substringAfter("this is").trim()
-                    add_face(name = name)
-                    lookingMessage()
-                    match = true
-                }
-                if (str.contains("count the object")) {
-                    val extraInstructions = str.substringAfter("count the object").trim()
-                    count_objects(extraInstructions=extraInstructions)
-                    lookingMessage()
-                    match = true
-                }
-//                if (str.contains("count object")) {
-//                    val extraInstructions = str.substringAfter("count object").trim()
-//                    count_objects(extraInstructions=extraInstructions)
-//                    lookingMessage()
-//                    match = true
-//                }
-//                if (str.contains("what objects")) {
-//                    val extraInstructions = str.substringAfter("what objects").trim()
-//                    count_objects(extraInstructions=extraInstructions)
-//                    lookingMessage()
-//                    match = true
-//                }
-                if (str.contains("scan")) {
-                    val regex = Regex("(barcode|bar code|qr code)", RegexOption.IGNORE_CASE)
-                    // Replace all matches with an empty string
-                    barcodeExtraInstructions = regex.replace(str.substringAfter("scan").trim(), "").trim()
-                    barcodeCounter=50000
 
-                    speak("Looking for barcodes")
+                if (aliasMatcher.contains(str, "what do you see")) {
+                    val extraInstructions = aliasMatcher.remove(str, "what do you see") ?: ""
+                    describeScene(extraInstructions=extraInstructions)
+                    lookingMessage()
                     match = true
                 }
-                if (str.contains("object")) {
+                else if (aliasMatcher.contains(str, "what is written")) {
+                    val extraInstructions = aliasMatcher.remove(str, "what is written") ?: ""
+                    ocr(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                else if (aliasMatcher.contains(str, "count the object")) {
+                    val extraInstructions = aliasMatcher.remove(str, "count the object") ?: ""
+                    count_objects(extraInstructions=extraInstructions)
+                    match = true
+                }
+                else if (aliasMatcher.contains(str, "look for objects")) {
                     if (str.contains("stop")) {
                         objectDetectionCounter=0
                         objectSpeakCounter=0
                         speak("No longer looking for objects")
                     }
                     else {
-                        objectDetectionExtraInstructions = str.substringAfter("object").trim()
+                        objectDetectionExtraInstructions = aliasMatcher.remove(str, "look for objects") ?: ""
                         objectDetectionCounter=1000
                         objectSpeakCounter=50
                         speak("Looking for objects")
                     }
                     match = true
                 }
-                if (str.equals("change your voice") ||
-                    str.equals("change voice")) {
+                else if (aliasMatcher.contains(str, "who is this")) {
+                    val extraInstructions = aliasMatcher.remove(str, "who is this") ?: ""
+                    face_recognition(extraInstructions=extraInstructions)
+                    lookingMessage()
+                    match = true
+                }
+                else if (aliasMatcher.contains(str, "this is")) {
+                    val faceName = aliasMatcher.remove(str, "this is") ?: ""
+                    add_face(name = faceName)
+                    lookingMessage()
+                    match = true
+                }
+                else if (aliasMatcher.contains(str, "change your name to")) {
+                    name = aliasMatcher.remove(str, "change your name to") ?: name
+                    speak("My new name is $name")
+                    match = true
+                }
+                else if (aliasMatcher.contains(str, "where am I")) {
+                    speakLocation()
+                    match = true
+                }
+                else if (aliasMatcher.contains(str, "change your voice")) {
                     changeVoice()
                     match = true
                 }
+//                else {
+//                    val json="{\"command\":\"llm\",\"prompt\":\"$str\"}"
+//                    imageChannel.trySend(json)
+//                    lookingMessage()
+//                    match = true
                 if (str.equals("hello")) {
                     speak("Hi")
                     match = true
@@ -787,13 +865,8 @@ class MainActivity : AppCompatActivity() {
                     speak(str.substringAfter("echo"))
                     match = true
                 }
-                else if (str.contains("say")) {
+                if (str.contains("say")) {
                     speak(str.substringAfter("say"))
-                    match = true
-                }
-                if (str.contains("change your name to ")) {
-                    name = str.substringAfter("change your name to").trim()
-                    speak("My new name is $name")
                     match = true
                 }
             }
@@ -814,9 +887,10 @@ class MainActivity : AppCompatActivity() {
             )
             putExtra(
                 RecognizerIntent.EXTRA_MAX_RESULTS,
-                10
+                50
             )
         }
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
         speechRecognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(p0: Bundle?) {}
 
@@ -878,11 +952,6 @@ class MainActivity : AppCompatActivity() {
                             val bitmap = previewView.bitmap
                             if (bitmap != null) {
                                 processFrameForObjectDetection(bitmap)
-//                                val image = InputImage.fromBitmap(bitmap, 0)
-//                                objectDetector.process(image)
-//                                    .addOnSuccessListener { detectedObjects ->
-//                                        objectsDetected(detectedObjects)
-//                                    }
                             }
                         }
                         imageProxy.close()
@@ -1060,6 +1129,17 @@ class MainActivity : AppCompatActivity() {
                     objectSpeakCounter = 50
                 }
             }
+        }
+    }
+
+    private fun speakLocation() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getLastKnownLocation()
+            println("Location: "+currentAddress)
+            if (currentAddress != null)
+                speak("You are near $currentAddress")
+            else
+                speak ("I can't find your location")
         }
     }
 }

@@ -8,69 +8,94 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <TextView
-        android:id="@+id/serverIPAddressLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="30dp"
-        android:text="@string/server_ip_address_label"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-        app:layout_constraintBottom_toBottomOf="@+id/serverIPAddress"
+    <TableLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/serverIPAddress" />
+        app:layout_constraintTop_toTopOf="parent">
 
-    <TextView
-        android:id="@+id/serverPortNumberLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/server_port_number_label"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-        app:layout_constraintBottom_toBottomOf="@+id/serverPortNumber"
-        app:layout_constraintEnd_toEndOf="@+id/serverIPAddressLabel"
-        app:layout_constraintTop_toTopOf="@+id/serverPortNumber" />
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" >
 
-    <EditText
-        android:id="@+id/serverIPAddress"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:layout_marginStart="10dp"
-        android:layout_marginTop="10dp"
-        android:ems="10"
-        android:inputType="text"
-        android:text="@string/server_default_ip_address"
-        app:layout_constraintStart_toEndOf="@+id/serverIPAddressLabel"
-        app:layout_constraintTop_toTopOf="parent" />
+            <TextView
+                android:id="@+id/serverIPAddressLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/server_ip_address_label"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
 
-    <EditText
-        android:id="@+id/serverPortNumber"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="10dp"
-        android:ems="10"
-        android:inputType="text"
-        android:text="@string/server_default_port_number"
-        app:layout_constraintStart_toEndOf="@+id/serverIPAddressLabel"
-        app:layout_constraintTop_toBottomOf="@+id/serverIPAddress" />
+            <EditText
+                android:id="@+id/serverIPAddress"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:ems="10"
+                android:inputType="text"
+                android:text="@string/server_default_ip_address"/>
 
-    <EditText
-        android:id="@+id/photosPerCapture"
-        android:layout_width="wrap_content"
-        android:layout_height="48dp"
-        android:layout_marginStart="8dp"
-        android:ems="10"
-        android:inputType="text"
-        android:text="@string/default_photos_per_capture"
-        app:layout_constraintStart_toEndOf="@+id/serverIPAddressLabel"
-        app:layout_constraintTop_toBottomOf="@+id/serverPortNumber" />
+        </TableRow>
 
-    <TextView
-        android:id="@+id/photosPerCaptureLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/photos_per_capture_label"
-        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-        app:layout_constraintBottom_toBottomOf="@+id/photosPerCapture"
-        app:layout_constraintEnd_toEndOf="@+id/serverIPAddressLabel"
-        app:layout_constraintTop_toBottomOf="@+id/serverPortNumber" />
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" >
+
+            <TextView
+                android:id="@+id/serverPortNumberLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/server_port_number_label"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
+
+            <EditText
+                android:id="@+id/serverPortNumber"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:ems="10"
+                android:inputType="text"
+                android:text="@string/server_default_port_number"/>
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" >
+
+            <TextView
+                android:id="@+id/photosPerCaptureLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/photos_per_capture_label"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
+
+            <EditText
+                android:id="@+id/photosPerCapture"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:ems="10"
+                android:inputType="text"
+                android:text="@string/default_photos_per_capture"/>
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" >
+
+            <TextView
+                android:id="@+id/debugModeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/debug_mode_label"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
+
+            <Switch
+                android:id="@+id/debugMode"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingRight="100dp"
+                android:text=""
+                android:textOff=""
+                android:textOn="" />
+        </TableRow>
+    </TableLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
