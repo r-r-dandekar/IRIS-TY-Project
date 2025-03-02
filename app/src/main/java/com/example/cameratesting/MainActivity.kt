@@ -4,9 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Rect
-import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
@@ -20,7 +17,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -31,17 +27,6 @@ import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.cameratesting.databinding.ActivityMainBinding
-import com.google.mlkit.vision.barcode.BarcodeScanner
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.common.InputImage
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.IOException
-import java.io.InputStream
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -57,6 +42,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.location.Address
 import android.location.Geocoder
@@ -88,6 +74,7 @@ import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
 import java.net.InetSocketAddress
 import java.net.SocketException
+
 
 
 class MainActivity : AppCompatActivity() {
