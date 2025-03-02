@@ -153,7 +153,7 @@ class MainActivity : AppCompatActivity() {
             startCamera()
             initSpeechRecognition()
             initTextToSpeech()
-            startBarcodeDetectionThread() // Start barcode detection thread
+//            startBarcodeDetectionThread() // Start barcode detection thread
         } else {
             requestPermissions()
         }
@@ -267,53 +267,53 @@ class MainActivity : AppCompatActivity() {
 //    }
 
     // Barcode Detection Thread
-    private fun startBarcodeDetectionThread() {
-        isBarcodeDetectionRunning = true
-        barcodeScanner = BarcodeScanning.getClient()
-
-        GlobalScope.launch(Dispatchers.Default) {
-            while (isBarcodeDetectionRunning) {
-                val bitmap = captureFrameFromCamera() // Capture a frame from the camera
-                if (bitmap != null) {
-                    processFrameForBarcode(bitmap)
-                }
-                delay(100) // Adjust the delay as needed
-            }
-        }
-    }
-
-    private fun stopBarcodeDetectionThread() {
-        isBarcodeDetectionRunning = false
-    }
+//    private fun startBarcodeDetectionThread() {
+//        isBarcodeDetectionRunning = true
+//        barcodeScanner = BarcodeScanning.getClient()
+//
+//        GlobalScope.launch(Dispatchers.Default) {
+//            while (isBarcodeDetectionRunning) {
+//                val bitmap = captureFrameFromCamera() // Capture a frame from the camera
+//                if (bitmap != null) {
+//                    processFrameForBarcode(bitmap)
+//                }
+//                delay(100) // Adjust the delay as needed
+//            }
+//        }
+//    }
+//
+//    private fun stopBarcodeDetectionThread() {
+//        isBarcodeDetectionRunning = false
+//    }
 
     private fun captureFrameFromCamera(): Bitmap? {
         val previewView = findViewById<PreviewView>(R.id.viewFinder)
         return previewView.bitmap
     }
 
-    private fun processFrameForBarcode(bitmap: Bitmap) {
-        val image = InputImage.fromBitmap(bitmap, 0)
-        barcodeScanner.process(image)
-            .addOnSuccessListener { barcodes ->
-                if (barcodes.isNotEmpty()) {
-                    val barcode = barcodes[0]
-                    val boundingBox = barcode.boundingBox
-                    val rawValue = barcode.rawValue
-
-                    if (boundingBox != null) {
-                        provideFeedback(boundingBox, bitmap.width, bitmap.height)
-
-                        if (rawValue != null && isBarcodeCentered(boundingBox, bitmap.width, bitmap.height)) {
-                            // Barcode is centered, send UPC code to the backend
-                            sendUPCToBackend(rawValue)
-                        }
-                    }
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Barcode detection failed: ${e.message}")
-            }
-    }
+//    private fun processFrameForBarcode(bitmap: Bitmap) {
+//        val image = InputImage.fromBitmap(bitmap, 0)
+//        barcodeScanner.process(image)
+//            .addOnSuccessListener { barcodes ->
+//                if (barcodes.isNotEmpty()) {
+//                    val barcode = barcodes[0]
+//                    val boundingBox = barcode.boundingBox
+//                    val rawValue = barcode.rawValue
+//
+//                    if (boundingBox != null) {
+//                        provideFeedback(boundingBox, bitmap.width, bitmap.height)
+//
+//                        if (rawValue != null && isBarcodeCentered(boundingBox, bitmap.width, bitmap.height)) {
+//                            // Barcode is centered, send UPC code to the backend
+//                            sendUPCToBackend(rawValue)
+//                        }
+//                    }
+//                }
+//            }
+//            .addOnFailureListener { e ->
+//                Log.e(TAG, "Barcode detection failed: ${e.message}")
+//            }
+//    }
     private fun provideFeedback(boundingBox: Rect, frameWidth: Int, frameHeight: Int) {
         val centerX = boundingBox.centerX()
         val centerY = boundingBox.centerY()
@@ -1143,7 +1143,7 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             } else {
                 startCamera()
-                startBarcodeDetectionThread() // Start barcode detection after permissions are granted
+//                startBarcodeDetectionThread() // Start barcode detection after permissions are granted
             }
         }
 
