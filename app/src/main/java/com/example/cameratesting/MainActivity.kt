@@ -4,6 +4,9 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Rect
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
@@ -17,6 +20,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -27,6 +31,17 @@ import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.cameratesting.databinding.ActivityMainBinding
+import com.google.mlkit.vision.barcode.BarcodeScanner
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -95,12 +110,9 @@ class MainActivity : AppCompatActivity() {
     private var imageCapture: ImageCapture? = null
 
     private lateinit var cameraExecutor: ExecutorService
-
     private lateinit var previewView: PreviewView
-
     private lateinit var textToSpeech: TextToSpeech
-
-    private lateinit var serverIPAddress : String
+    private lateinit var serverIPAddress: String
     private var serverPortNumber = 0
     private var photosPerCapture = 1
     private var debugMode = false
@@ -115,10 +127,8 @@ class MainActivity : AppCompatActivity() {
     private val LOCATION_PERMISSION_REQUEST_CODE = 1
 
     private var currentSocket: Socket? = null
-
     private var heartbeatCounter: Int = 0
     private val heartbeatCounterLimit: Int = 50
-
     private val connectTimeoutMillis = 3000
 
     private var barcodeCounter = 0
@@ -156,6 +166,7 @@ class MainActivity : AppCompatActivity() {
             startCamera()
             initSpeechRecognition()
             initTextToSpeech()
+            startBarcodeDetectionThread() // Start barcode detection thread
         } else {
             requestPermissions()
         }
@@ -260,6 +271,96 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         loadPreferences()
+    }
+
+//    override fun onDestroy() {
+//        super.onDestroy()
+//        cameraExecutor.shutdown()
+//        stopBarcodeDetectionThread() // Stop barcode detection thread
+//    }
+
+    // Barcode Detection Thread
+    private fun startBarcodeDetectionThread() {
+        isBarcodeDetectionRunning = true
+        barcodeScanner = BarcodeScanning.getClient()
+
+        GlobalScope.launch(Dispatchers.Default) {
+            while (isBarcodeDetectionRunning) {
+                val bitmap = captureFrameFromCamera() // Capture a frame from the camera
+                if (bitmap != null) {
+                    processFrameForBarcode(bitmap)
+                }
+                delay(100) // Adjust the delay as needed
+            }
+        }
+    }
+
+    private fun stopBarcodeDetectionThread() {
+        isBarcodeDetectionRunning = false
+    }
+
+    private fun captureFrameFromCamera(): Bitmap? {
+        val previewView = findViewById<PreviewView>(R.id.viewFinder)
+        return previewView.bitmap
+    }
+
+    private fun processFrameForBarcode(bitmap: Bitmap) {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        barcodeScanner.process(image)
+            .addOnSuccessListener { barcodes ->
+                if (barcodes.isNotEmpty()) {
+                    val barcode = barcodes[0]
+                    val boundingBox = barcode.boundingBox
+                    val rawValue = barcode.rawValue
+
+                    if (boundingBox != null) {
+                        provideFeedback(boundingBox, bitmap.width, bitmap.height)
+
+                        if (rawValue != null && isBarcodeCentered(boundingBox, bitmap.width, bitmap.height)) {
+                            // Barcode is centered, send UPC code to the backend
+                            sendUPCToBackend(rawValue)
+                        }
+                    }
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Barcode detection failed: ${e.message}")
+            }
+    }
+    private fun provideFeedback(boundingBox: Rect, frameWidth: Int, frameHeight: Int) {
+        val centerX = boundingBox.centerX()
+        val centerY = boundingBox.centerY()
+
+        val frameCenterX = frameWidth / 2
+        val frameCenterY = frameHeight / 2
+
+        val threshold = 50 // Adjust threshold as needed
+
+        when {
+            centerX < frameCenterX - threshold -> speak("Move the camera to the right")
+            centerX > frameCenterX + threshold -> speak("Move the camera to the left")
+            centerY < frameCenterY - threshold -> speak("Move the camera down")
+            centerY > frameCenterY + threshold -> speak("Move the camera up")
+            else -> speak("Barcode is centered")
+        }
+    }
+
+    private fun isBarcodeCentered(boundingBox: Rect, frameWidth: Int, frameHeight: Int): Boolean {
+        val centerX = boundingBox.centerX()
+        val centerY = boundingBox.centerY()
+
+        val frameCenterX = frameWidth / 2
+        val frameCenterY = frameHeight / 2
+
+        val threshold = 50 // Adjust threshold as needed
+
+        return (centerX in (frameCenterX - threshold)..(frameCenterX + threshold) &&
+                centerY in (frameCenterY - threshold)..(frameCenterY + threshold))
+    }
+
+    private fun sendUPCToBackend(upcCode: String) {
+        val json = "{\"command\":\"barcode\", \"upc_code\":\"$upcCode\"}"
+        imageChannel.trySend(json)
     }
 
     private fun loadPreferences() {
@@ -570,7 +671,8 @@ class MainActivity : AppCompatActivity() {
         val tempFile = File(this.cacheDir, "$name.jpg")
         val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
 
-        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object : OnImageSavedCallback {
+        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object :
+            ImageCapture.OnImageSavedCallback {
 
             // This method is invoked when the image is saved successfully
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
@@ -580,7 +682,7 @@ class MainActivity : AppCompatActivity() {
                 imagePaths.add(savedPath)
                 if (count <= 1) {
                     produceImages(imagePaths, extraInstructions=extraInstructions,
-                                command=command, resolutionFactor)
+                        command=command, resolutionFactor)
                 }
                 else {
                     Thread.sleep(10)
@@ -604,7 +706,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ocr(imagePaths: MutableList<String> = mutableListOf(), count: Int = photosPerCapture,
-                              extraInstructions: String = "None") {
+                    extraInstructions: String = "None") {
         multiImageCommand(imagePaths=imagePaths, count=count,
             extraInstructions=extraInstructions, command="ocr", resolutionFactor=1200)
     }
@@ -736,7 +838,8 @@ class MainActivity : AppCompatActivity() {
         val tempFile = File(this.cacheDir, "$name.jpg")
         val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
 
-        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object : OnImageSavedCallback {
+        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object :
+            ImageCapture.OnImageSavedCallback {
 
             // This method is invoked when the image is saved successfully
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
@@ -884,7 +987,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initSpeechRecognition() {
-            // Get SpeechRecognizer instance
+        // Get SpeechRecognizer instance
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             // Speech recognition service NOT available
             return
@@ -1019,11 +1122,12 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.shutdown()
     }
 
+
     companion object {
         private const val TAG = "CameraXApp"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private val REQUIRED_PERMISSIONS =
-            mutableListOf (
+            mutableListOf(
                 Manifest.permission.CAMERA,
                 Manifest.permission.INTERNET,
                 Manifest.permission.RECORD_AUDIO
@@ -1036,8 +1140,8 @@ class MainActivity : AppCompatActivity() {
 
     private val activityResultLauncher =
         registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions())
-        { permissions ->
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
             // Handle Permission granted/rejected
             var permissionGranted = true
             permissions.entries.forEach {
@@ -1045,11 +1149,14 @@ class MainActivity : AppCompatActivity() {
                     permissionGranted = false
             }
             if (!permissionGranted) {
-                Toast.makeText(baseContext,
+                Toast.makeText(
+                    baseContext,
                     "Permission request denied",
-                    Toast.LENGTH_SHORT).show()
+                    Toast.LENGTH_SHORT
+                ).show()
             } else {
                 startCamera()
+                startBarcodeDetectionThread() // Start barcode detection after permissions are granted
             }
         }
 
