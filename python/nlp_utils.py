@@ -82,6 +82,15 @@ def clean_ocr_output(outputs, extra_instructions='none'):
   print("Cleaned OCR Output: "+cleaned)
   return cleaned
 
+  
+def user_llm_query(query):
+  prompt=f"You are an app designed to help the blind. \
+    The user has asked a query, and needs an answer from you \
+    You have to answer the query, in a short and concise manner, \
+    as the text will be read out loud. \
+    query: {query}"
+  return llm_response(prompt)
+
 def llm_response(prompt):
   # For using Gemini
   return chat_session.send_message(prompt).text

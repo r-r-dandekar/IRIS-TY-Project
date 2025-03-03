@@ -1,43 +1,10 @@
 package com.example.cameratesting
 
+//import com.example.cameratesting.ml.TrainedOnLvis
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.os.Build
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.util.Base64
-import android.util.Log
-import android.view.View
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.Recorder
-import androidx.camera.video.Recording
-import androidx.camera.video.VideoCapture
-import androidx.camera.view.PreviewView
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-import com.example.cameratesting.databinding.ActivityMainBinding
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import kotlinx.coroutines.*
-import java.net.Socket
-import java.io.File
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCapture.OnImageSavedCallback
-import kotlinx.coroutines.channels.Channel
-import java.io.IOException
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
@@ -47,34 +14,63 @@ import android.graphics.RectF
 import android.location.Address
 import android.location.Geocoder
 import android.location.Location
-import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
-import kotlin.random.Random
 import android.media.AudioManager
-import android.opengl.Visibility
+import android.os.Build
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.util.Base64
+import android.util.Log
+import android.view.View
 import android.view.View.GONE
 import android.view.View.VISIBLE
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCapture.OnImageSavedCallback
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.example.cameratesting.databinding.ActivityMainBinding
 import com.example.cameratesting.ml.SsdMobilenetV11Metadata1
 import com.example.cameratesting.ui.theme.Alias
 import com.example.cameratesting.ui.theme.AliasMatcher
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.objects.DetectedObject
 import com.google.mlkit.vision.objects.ObjectDetection
 import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import org.json.JSONObject
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.SocketException
-
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import kotlin.random.Random
 
 
 class MainActivity : AppCompatActivity() {
@@ -89,10 +85,9 @@ class MainActivity : AppCompatActivity() {
 //    private lateinit var imageView: ImageView
 
     private lateinit var model: SsdMobilenetV11Metadata1
+//    private lateinit var model: TrainedOnLvis
 
     private lateinit var imageProcessor: ImageProcessor
-
-    val scanner = BarcodeScanning.getClient()
 
     private var imageCapture: ImageCapture? = null
 
@@ -118,8 +113,11 @@ class MainActivity : AppCompatActivity() {
     private val heartbeatCounterLimit: Int = 50
     private val connectTimeoutMillis = 3000
 
+    private lateinit var  barcodeScanner : BarcodeScanner
     private var barcodeCounter = 0
     private var barcodeExtraInstructions = ""
+    private var barcodeFeedbackCooldown = 0
+    private val barcodeThreshold = 50
 
     private var objectDetectionCounter = 0
     private var objectDetectionExtraInstructions = ""
@@ -139,11 +137,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
-
         previewView = findViewById(R.id.viewFinder)
-
-
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
         initializeAliases()
         loadPreferences()
         checkLocationPermission()
@@ -153,7 +149,7 @@ class MainActivity : AppCompatActivity() {
             startCamera()
             initSpeechRecognition()
             initTextToSpeech()
-//            startBarcodeDetectionThread() // Start barcode detection thread
+            startBarcodeDetectionThread() // Start barcode detection thread
         } else {
             requestPermissions()
         }
@@ -164,7 +160,6 @@ class MainActivity : AppCompatActivity() {
         startSendingTCPThread()
         startReceivingTCPThread()
         startHeartbeatThread()
-        startBarcodeListener()
         startObjectDetectionListener()
 
         // Set up the listeners for take photo and video capture buttons
@@ -173,6 +168,7 @@ class MainActivity : AppCompatActivity() {
         labels = FileUtil.loadLabels(this, "labels.txt")
         imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build()
         model = SsdMobilenetV11Metadata1.newInstance(this)
+//        model = TrainedOnLvis.newInstance(this)
 
 //        imageView = findViewById(R.id.viewFinder)
 
@@ -211,7 +207,6 @@ class MainActivity : AppCompatActivity() {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun getLastKnownLocation() {
-        println("HELO ERTEWRT")
         try {
             fusedLocationClient.lastLocation
                 .addOnSuccessListener { location: Location? ->
@@ -260,75 +255,80 @@ class MainActivity : AppCompatActivity() {
         loadPreferences()
     }
 
-//    override fun onDestroy() {
-//        super.onDestroy()
-//        cameraExecutor.shutdown()
-//        stopBarcodeDetectionThread() // Stop barcode detection thread
-//    }
+    override fun onDestroy() {
+        super.onDestroy()
+        cameraExecutor.shutdown()
+        stopBarcodeDetectionThread() // Stop barcode detection thread
+    }
 
     // Barcode Detection Thread
-//    private fun startBarcodeDetectionThread() {
-//        isBarcodeDetectionRunning = true
-//        barcodeScanner = BarcodeScanning.getClient()
-//
-//        GlobalScope.launch(Dispatchers.Default) {
-//            while (isBarcodeDetectionRunning) {
-//                val bitmap = captureFrameFromCamera() // Capture a frame from the camera
-//                if (bitmap != null) {
-//                    processFrameForBarcode(bitmap)
-//                }
-//                delay(100) // Adjust the delay as needed
-//            }
-//        }
-//    }
-//
-//    private fun stopBarcodeDetectionThread() {
-//        isBarcodeDetectionRunning = false
-//    }
+    private fun startBarcodeDetectionThread() {
+        barcodeScanner = BarcodeScanning.getClient()
+
+        GlobalScope.launch(Dispatchers.Default) {
+            while (true) {
+                if (barcodeFeedbackCooldown > 0)
+                    barcodeFeedbackCooldown--
+                if (barcodeCounter > 0) {
+                    barcodeCounter--
+                    delay(100)
+                }
+                else
+                    delay(200)
+            }
+        }
+    }
+
+    private fun stopBarcodeDetectionThread() {
+        barcodeCounter = 0
+    }
 
     private fun captureFrameFromCamera(): Bitmap? {
         val previewView = findViewById<PreviewView>(R.id.viewFinder)
         return previewView.bitmap
     }
 
-//    private fun processFrameForBarcode(bitmap: Bitmap) {
-//        val image = InputImage.fromBitmap(bitmap, 0)
-//        barcodeScanner.process(image)
-//            .addOnSuccessListener { barcodes ->
-//                if (barcodes.isNotEmpty()) {
-//                    val barcode = barcodes[0]
-//                    val boundingBox = barcode.boundingBox
-//                    val rawValue = barcode.rawValue
-//
-//                    if (boundingBox != null) {
-//                        provideFeedback(boundingBox, bitmap.width, bitmap.height)
-//
-//                        if (rawValue != null && isBarcodeCentered(boundingBox, bitmap.width, bitmap.height)) {
-//                            // Barcode is centered, send UPC code to the backend
-//                            sendUPCToBackend(rawValue)
-//                        }
-//                    }
-//                }
-//            }
-//            .addOnFailureListener { e ->
-//                Log.e(TAG, "Barcode detection failed: ${e.message}")
-//            }
-//    }
+    private fun processFrameForBarcode(bitmap: Bitmap) {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        barcodeScanner.process(image)
+            .addOnSuccessListener { barcodes ->
+                if (barcodes.isNotEmpty()) {
+                    val barcode = barcodes[0]
+                    val boundingBox = barcode.boundingBox
+                    val rawValue = barcode.rawValue
+
+                    if (boundingBox != null && barcodeCounter > 0) {
+                        if (rawValue != null) {
+                            sendUPCToBackend(rawValue)
+                            speak("Barcode detected")
+                            println("Detected barcode: $rawValue")
+                            barcodeCounter=0
+                        }
+                        else
+                            provideFeedback(boundingBox, bitmap.width, bitmap.height)
+                    }
+                }
+            }
+    }
+
     private fun provideFeedback(boundingBox: Rect, frameWidth: Int, frameHeight: Int) {
+        if (barcodeFeedbackCooldown > 0) {
+            barcodeFeedbackCooldown--
+            return
+        }
         val centerX = boundingBox.centerX()
         val centerY = boundingBox.centerY()
 
         val frameCenterX = frameWidth / 2
         val frameCenterY = frameHeight / 2
 
-        val threshold = 50 // Adjust threshold as needed
-
+        barcodeFeedbackCooldown = 40
         when {
-            centerX < frameCenterX - threshold -> speak("Move the camera to the right")
-            centerX > frameCenterX + threshold -> speak("Move the camera to the left")
-            centerY < frameCenterY - threshold -> speak("Move the camera down")
-            centerY > frameCenterY + threshold -> speak("Move the camera up")
-            else -> speak("Barcode is centered")
+            centerX < frameCenterX - barcodeThreshold -> speak("Move the camera to the right")
+            centerX > frameCenterX + barcodeThreshold -> speak("Move the camera to the left")
+            centerY < frameCenterY - barcodeThreshold -> speak("Move the camera down")
+            centerY > frameCenterY + barcodeThreshold -> speak("Move the camera up")
+            else -> speak("Hold still")
         }
     }
 
@@ -339,14 +339,12 @@ class MainActivity : AppCompatActivity() {
         val frameCenterX = frameWidth / 2
         val frameCenterY = frameHeight / 2
 
-        val threshold = 50 // Adjust threshold as needed
-
-        return (centerX in (frameCenterX - threshold)..(frameCenterX + threshold) &&
-                centerY in (frameCenterY - threshold)..(frameCenterY + threshold))
+        return (centerX in (frameCenterX - barcodeThreshold)..(frameCenterX + barcodeThreshold) &&
+                centerY in (frameCenterY - barcodeThreshold)..(frameCenterY + barcodeThreshold))
     }
 
     private fun sendUPCToBackend(upcCode: String) {
-        val json = "{\"command\":\"barcode\", \"upc_code\":\"$upcCode\"}"
+        val json = "{\"command\":\"barcode\", \"upc_code\":\"$upcCode\", \"extra_instructions\":\"$barcodeExtraInstructions\"}"
         imageChannel.trySend(json)
     }
 
@@ -367,19 +365,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initializeAliases() {
-        aliasMatcher.addAlias(Alias("explain", arrayListOf("i", "explain", "give details", "elaborate")))
+        aliasMatcher.addAlias(Alias("explain", arrayListOf("explain", "give details", "elaborate")))
         aliasMatcher.addAlias(Alias("IRIS", arrayListOf("Iris", "Irish", "I guess", "I reached", "I just")))
         aliasMatcher.addAlias(Alias("what do you see", arrayListOf("What do you see", "Tell me what you see", "Describe the scene", "What’s in front of me", "What is in front of me", "Look around", "Explain the view", "Explain the scene")))
         aliasMatcher.addAlias(Alias("what is written", arrayListOf("What is written", "Read the text", "What does it say", "Tell me the text", "Read aloud", "Can you read this", "Read what is in front", "Read what's is in front", "Extract the words", "Scan the text")))
         aliasMatcher.addAlias(Alias("count the object", arrayListOf("Count the object", "How many objects?", "Tell me the number of objects", "How many things are there?", "Number of objects?")))
         aliasMatcher.addAlias(Alias("look for objects", arrayListOf("Look for object", "Find object", "Detect object", "Identify things", "Spot object", "Scan for object", "Recognize object", "What objects are there?")))
-        aliasMatcher.addAlias(Alias("scan", arrayListOf("Scan")))
+        aliasMatcher.addAlias(Alias("scan", arrayListOf("Scan", "barcode")))
         aliasMatcher.addAlias(Alias("change your name to", arrayListOf("change your name to")))
         aliasMatcher.addAlias(Alias("who is this", arrayListOf("Who is this", "Identify this person", "Recognize this face", "Tell me who this is", "Whose face is this?", "Can you recognize this person?", "Who am I looking at?")))
         aliasMatcher.addAlias(Alias("this is", arrayListOf("This is", "Remember this person as", "Add this face as", "Store this identity as", "Register this person as", "Memorize this person as", "Save this face as")))
         aliasMatcher.addAlias(Alias("where am I", arrayListOf("where am I", "tell me where I am", "find my location", "tell the current location")))
         aliasMatcher.addAlias(Alias("change your voice", arrayListOf("change your voice")))
-        println("Hello There "+aliasMatcher.contains("Irislook for objects look for objects explain Irish this that something", "look for objects"))
+        aliasMatcher.addAlias(Alias("Iris Help",arrayListOf("Help Iris")))
     }
 
     private fun connectToServer(ipAddress: String, port: Int): Socket? {
@@ -390,7 +388,7 @@ class MainActivity : AppCompatActivity() {
             println("Connected to server: $ipAddress:$port")
             socket
         } catch (e: Exception) {
-            println("Error connecting to server: $e")
+            Log.e("Connecting to Server", "Error connecting to server: $e")
             null
         }
     }
@@ -430,11 +428,11 @@ class MainActivity : AppCompatActivity() {
                     currentSocket?.close()
 
                     // Connect to the new server details
-                    println("Trying to connect...")
+                    Log.d("Connecting to Server", "Trying to connect...")
                     try {
                         currentSocket = connectToServer(serverIPAddress, serverPortNumber)
                     } catch (e: Exception) {
-                        println("Couldn't connect to server: $e")
+                        Log.e("Connecting to Server", "Couldn't connect to server: $e")
                     }
                 }
                 if (i==0 && currentSocket != null) {
@@ -477,22 +475,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-    private fun startBarcodeListener() {
-        GlobalScope.launch {
-            while (true) {
-                if (barcodeCounter > 0) {
-                    barcode_qrcode(extraInstructions = barcodeExtraInstructions)
-                    delay(50) // Wait before checking again
-                }
-                else {
-                    delay(250)
-                    barcodeCounter--
-                }
-            }
-        }
-    }
-
     private fun startObjectDetectionListener() {
         GlobalScope.launch {
             while (true) {
@@ -501,13 +483,6 @@ class MainActivity : AppCompatActivity() {
                 if (objectSpeakCounter > 0)
                     objectSpeakCounter--
                 delay(50)
-//                if (objectDetectionCounter > 0) {
-//                    objectDetection(extraInstructions = objectDetectionExtraInstructions)
-//                    delay(500) // Wait before checking again
-//                }
-//                else {
-//                    delay(1500)
-//                }
             }
         }
     }
@@ -592,13 +567,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initTextToSpeech() {
-        textToSpeech = TextToSpeech(
-            applicationContext
-        ) { i ->
-            // if No error is found then only it will run
+        textToSpeech = TextToSpeech(applicationContext) { i ->
             if (i != TextToSpeech.ERROR) {
-                // To Choose language of speech
-                textToSpeech.setLanguage(Locale.UK)
+                textToSpeech.setLanguage(Locale("en", "IN"))
+                speak("Welcome to IRIS!")
             }
         }
     }
@@ -711,60 +683,60 @@ class MainActivity : AppCompatActivity() {
         multiImageCommand(imagePaths=imagePaths, count=count,
             extraInstructions=extraInstructions, command="count_objects")
     }
-    private fun barcode_qrcode(extraInstructions : String = "") {
-        val imageCapture = imageCapture ?: return
-
-        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
-        val tempFile = File(this.cacheDir, "$name.jpg")
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
-
-        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object : OnImageSavedCallback {
-
-            // This method is invoked when the image is saved successfully
-            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                // Path of the saved image in the temporary directory
-                val savedPath = tempFile.absolutePath
-                println("Image saved at: $savedPath")
-                val bitmap = BitmapFactory.decodeFile(savedPath)
-                val inputImage = InputImage.fromBitmap(bitmap, 0)
-//                var gotBarcode = false
-                val result = scanner.process(inputImage)
-                    .addOnSuccessListener { barcodes ->
-//                        gotBarcode = true
-                        for (barcode in barcodes) {
-                            barcodeCounter = 0
-                            val bounds = barcode.boundingBox
-                            val corners = barcode.cornerPoints
-
-                            val rawValue = barcode.rawValue
-
-                            val valueType = barcode.valueType
-                            // See API reference for complete list of supported types
-                            when (valueType) {
-                                Barcode.TYPE_PRODUCT -> {
-                                    speak("Found a product barcode. Checking for product information...")
-                                    val json ="{\"command\":\"barcode\",\"barcode_raw_value\":\"$rawValue\",\"extra_instructions\":\"$extraInstructions\"}"
-                                    imageChannel.trySend(json)
-                                }
-                                Barcode.TYPE_URL -> {
-                                    speak("URL barcode: $rawValue")
-                                }
-                            }
-                        }
-                    }
-                    .addOnFailureListener {
-                    }
-//                if (!gotBarcode)
-//                    speak("no barcode found")
-            }
-
-            // This method is invoked if there is an error during image capture
-            override fun onError(exception: ImageCaptureException) {
-                // Handle errors in image capture
-                exception.printStackTrace()
-            }
-        })
-    }
+//    private fun barcode_qrcode(extraInstructions : String = "") {
+//        val imageCapture = imageCapture ?: return
+//
+//        val name = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+//        val tempFile = File(this.cacheDir, "$name.jpg")
+//        val outputOptions = ImageCapture.OutputFileOptions.Builder(tempFile).build()
+//
+//        imageCapture.takePicture(outputOptions, ContextCompat.getMainExecutor(this), object : OnImageSavedCallback {
+//
+//            // This method is invoked when the image is saved successfully
+////            override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+////                // Path of the saved image in the temporary directory
+////                val savedPath = tempFile.absolutePath
+////                println("Image saved at: $savedPath")
+////                val bitmap = BitmapFactory.decodeFile(savedPath)
+////                val inputImage = InputImage.fromBitmap(bitmap, 0)
+////                var gotBarcode = false
+////                val result = scanner.process(inputImage)
+////                    .addOnSuccessListener { barcodes ->
+////                        gotBarcode = true
+////                        for (barcode in barcodes) {
+////                            barcodeCounter = 0
+////                            val bounds = barcode.boundingBox
+////                            val corners = barcode.cornerPoints
+////
+////                            val rawValue = barcode.rawValue
+////
+////                            val valueType = barcode.valueType
+////                            // See API reference for complete list of supported types
+////                            when (valueType) {
+////                                Barcode.TYPE_PRODUCT -> {
+////                                    speak("Found a product barcode. Checking for product information...")
+////                                    val json ="{\"command\":\"barcode\",\"barcode_raw_value\":\"$rawValue\",\"extra_instructions\":\"$extraInstructions\"}"
+////                                    imageChannel.trySend(json)
+////                                }
+////                                Barcode.TYPE_URL -> {
+////                                    speak("URL barcode: $rawValue")
+////                                }
+////                            }
+////                        }
+////                    }
+////                    .addOnFailureListener {
+////                    }
+//////                if (!gotBarcode)
+//////                    speak("no barcode found")
+//            }
+//
+//            // This method is invoked if there is an error during image capture
+//            override fun onError(exception: ImageCaptureException) {
+//                // Handle errors in image capture
+//                exception.printStackTrace()
+//            }
+//        })
+//    }
 
 
     private fun objectDetection(extraInstructions : String = "") {
@@ -849,7 +821,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun speak(text : String) {
-        textToSpeech.speak(text,TextToSpeech.QUEUE_FLUSH,null);
+        val utteranceId = "TTS_${System.currentTimeMillis()}"
+        textToSpeech.speak(text,TextToSpeech.QUEUE_FLUSH,null, utteranceId);
     }
 
     private fun lookingMessage() {
@@ -861,6 +834,7 @@ class MainActivity : AppCompatActivity() {
             "One moment...",
             "Just a second...",
             "Wait a minute...",
+            "Wait a moment...",
             "Hold on a second...",
             "Just a moment...",
             "I’m looking into it..."
@@ -878,7 +852,8 @@ class MainActivity : AppCompatActivity() {
             println("Speech Possibility: $possibility")
             if (match)      // if a command has already been identified for one of the
                 break       // possible sentences, don't look at the other possibilities
-
+            if (!aliasMatcher.contains(possibility, name))
+                continue
             var str = aliasMatcher.remove(possibility, name)
 
             if (str != null) {
@@ -915,6 +890,18 @@ class MainActivity : AppCompatActivity() {
                     }
                     match = true
                 }
+                else if (aliasMatcher.contains(str, "scan")) {
+                    if (str.contains("stop")) {
+                        barcodeCounter=0
+                        speak("No longer looking for barcodes")
+                    }
+                    else {
+                        barcodeExtraInstructions = aliasMatcher.remove(str, "look for objects") ?: ""
+                        barcodeCounter=1000
+                        speak("Looking for barcodes")
+                    }
+                    match = true
+                }
                 else if (aliasMatcher.contains(str, "who is this")) {
                     val extraInstructions = aliasMatcher.remove(str, "who is this") ?: ""
                     face_recognition(extraInstructions=extraInstructions)
@@ -940,19 +927,16 @@ class MainActivity : AppCompatActivity() {
                     changeVoice()
                     match = true
                 }
+                else if (aliasMatcher.contains(str, "help")) {
+                    help()
+                }
                 println(aliasMatcher.contains("explain this explain that", "explain"))
                 if (aliasMatcher.contains(str, "explain")) {
-                    println("EXPLAIN!!!")
                     val json="{\"command\":\"llm\",\"prompt\":\"$str\"}"
                     imageChannel.trySend(json)
                     lookingMessage()
                     match = true
                 }
-//                else {
-//                    val json="{\"command\":\"llm\",\"prompt\":\"$str\"}"
-//                    imageChannel.trySend(json)
-//                    lookingMessage()
-//                    match = true
                 if (str.equals("hello")) {
                     speak("Hi")
                     match = true
@@ -990,7 +974,7 @@ class MainActivity : AppCompatActivity() {
                 50
             )
         }
-        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale("en", "IN"))
         speechRecognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(p0: Bundle?) {}
 
@@ -1051,7 +1035,10 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             val bitmap = previewView.bitmap
                             if (bitmap != null) {
-                                processFrameForObjectDetection(bitmap)
+                                if (objectDetectionCounter > 0)
+                                    processFrameForObjectDetection(bitmap)
+                                if (barcodeCounter > 0)
+                                    processFrameForBarcode(bitmap)
                             }
                         }
                         imageProxy.close()
@@ -1104,11 +1091,6 @@ class MainActivity : AppCompatActivity() {
             baseContext, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        cameraExecutor.shutdown()
-    }
-
 
     companion object {
         private const val TAG = "CameraXApp"
@@ -1143,7 +1125,7 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             } else {
                 startCamera()
-//                startBarcodeDetectionThread() // Start barcode detection after permissions are granted
+                startBarcodeDetectionThread() // Start barcode detection after permissions are granted
             }
         }
 
@@ -1152,10 +1134,10 @@ class MainActivity : AppCompatActivity() {
         val processedImage = imageProcessor.process(image)
 
         // Run object detection
-        val outputs = model.process(processedImage)
-        val locations = outputs.locationsAsTensorBuffer.floatArray
-        val classes = outputs.classesAsTensorBuffer.floatArray
-        val scores = outputs.scoresAsTensorBuffer.floatArray
+        val output = model.process(processedImage)
+        val locations = output.locationsAsTensorBuffer.floatArray
+        val classes = output.classesAsTensorBuffer.floatArray
+        val scores = output.scoresAsTensorBuffer.floatArray
 
         // Find the most dominant object
         var maxScore = 0f
@@ -1176,62 +1158,9 @@ class MainActivity : AppCompatActivity() {
             println("$mostDominantObject : $maxScore")
 
             println("$objectDetectionCounter $objectSpeakCounter")
-            if (objectDetectionCounter > 0 && objectSpeakCounter == 0 && maxScore > 0.5) {
+            if (objectDetectionCounter > 0 && objectSpeakCounter == 0 && maxScore > 0.6) {
                 speak(mostDominantObject!!)
                 objectSpeakCounter = 50
-            }
-//            if (!isSpeaking) {
-//                speakDominantObject()
-//            }
-        }
-
-        // Draw bounding boxes and labels on the bitmap
-        val mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(mutableBitmap)
-
-        val h = mutableBitmap.height
-        val w = mutableBitmap.width
-        paint.textSize = h / 15f
-        paint.strokeWidth = h / 85f
-
-        scores.forEachIndexed { index, score ->
-            if (score > 0.5) {
-                val x = index * 4
-                paint.color = objectDetectionColors[index % objectDetectionColors.size]
-                paint.style = Paint.Style.STROKE
-                canvas.drawRect(
-                    RectF(
-                        locations[x + 1] * w,
-                        locations[x] * h,
-                        locations[x + 3] * w,
-                        locations[x + 2] * h
-                    ), paint
-                )
-                paint.style = Paint.Style.FILL
-                val label = "${labels[classes[index].toInt()]} $score"
-                canvas.drawText(
-                    label,
-                    locations[x + 1] * w,
-                    locations[x] * h,
-                    paint
-                )
-            }
-        }
-    }
-
-
-    private fun objectsDetected(detectedObjects: MutableList<DetectedObject>) {
-        for (detectedObject in detectedObjects) {
-//            val boundingBox = detectedObject.boundingBox
-//            val trackingId = detectedObject.trackingId
-            for (label in detectedObject.labels) {
-                val text = label.text
-                val confidence = label.confidence
-                println(text)
-                if (objectDetectionCounter > 0 && objectSpeakCounter == 0) {
-                    speak(text)
-                    objectSpeakCounter = 50
-                }
             }
         }
     }
@@ -1245,5 +1174,13 @@ class MainActivity : AppCompatActivity() {
             else
                 speak ("I can't find your location")
         }
+    }
+
+    private fun help() {
+        speak("Say look for objects for Object Detection Command,"+
+            "Say what do you see for Scene Description Command,"+
+            "Say scan barcode for Barcode Scanning Command,"+
+            "Say who is this for Face Detection Command,"+
+            "Say where am I for location command")
     }
 }

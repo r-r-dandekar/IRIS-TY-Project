@@ -30,8 +30,8 @@ class AliasMatcher(var ignoreCase : Boolean = true, var ignorePunctuation : Bool
             s2 = removePunctuation(s2)
         if (s1 == s2)
             return true
-        if (aliases.containsKey(s2))
-            return aliases[s2]?.contains(s1) ?: false
+        if (aliases.containsKey(s2)) {
+            return aliases[s2]?.isIn(s1) ?: false}
         else
             return false
     }

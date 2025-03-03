@@ -23,13 +23,14 @@ class Alias(var word: String, var aliases : ArrayList<String>,
             str = removePunctuation(str)
         return aliases.contains(str)
     }
-    fun contains(strParam : String) : Boolean {
+    fun isIn(strParam : String) : Boolean {
         var str = if(ignoreCase) strParam.lowercase() else strParam
         if (ignorePunctuation)
             str = removePunctuation(str)
         for (s in aliases) {
-            if (s.contains(str))
+            if (str.contains(s)) {
                 return true
+            }
         }
         return false
     }

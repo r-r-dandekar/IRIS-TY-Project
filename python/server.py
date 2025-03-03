@@ -1,6 +1,6 @@
 from face_recognition import find_face, add_faces
 from barcode_qrcode import detect_barcode_or_qr, fetch_online_info
-from nlp_utils import combine_descriptions, clean_ocr_output, summarize_barcode_data, llm_response
+from nlp_utils import combine_descriptions, clean_ocr_output, summarize_barcode_data, llm_response, user_llm_query
 import socket
 import cv2
 import numpy as np
@@ -235,7 +235,7 @@ def barcode(json_data):
 def barcode_new_thread(json_data):
     print("Looking for a bar code or QR code")
 
-    barcode_raw_value = json_data["barcode_raw_value"]
+    barcode_raw_value = json_data["upc_code"]
     extra_instructions = json_data["extra_instructions"]
     print("extra_instructions: "+extra_instructions)
 
@@ -310,7 +310,7 @@ def llm_command(json_data):
     print("prompt: "+prompt)
     stdout.flush()
 
-    llm_output = llm_response(prompt)
+    llm_output = user_llm_query(prompt).replace("*", "")
     print(llm_output)
     results = {"message":llm_output}
     
