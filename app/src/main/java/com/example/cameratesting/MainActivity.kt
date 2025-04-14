@@ -442,6 +442,7 @@ class MainActivity : AppCompatActivity() {
                     synchronized (this) {
                         heartbeatCounter++
                         if (heartbeatCounter > heartbeatCounterLimit) {
+                            heartbeatCounter -= 10
                             println("No response to heartbeats: Closing socket")
                             socket.close()
                             currentSocket = null
@@ -569,8 +570,8 @@ class MainActivity : AppCompatActivity() {
     private fun initTextToSpeech() {
         textToSpeech = TextToSpeech(applicationContext) { i ->
             if (i != TextToSpeech.ERROR) {
-                textToSpeech.setLanguage(Locale("en", "IN"))
-                speak("Welcome to IRIS!")
+                textToSpeech.setLanguage(Locale("en", "UK"))
+                speak("Welcome to iris!")
             }
         }
     }
@@ -1158,7 +1159,7 @@ class MainActivity : AppCompatActivity() {
             println("$mostDominantObject : $maxScore")
 
             println("$objectDetectionCounter $objectSpeakCounter")
-            if (objectDetectionCounter > 0 && objectSpeakCounter == 0 && maxScore > 0.6) {
+            if (objectDetectionCounter > 0 && objectSpeakCounter == 0 && maxScore > 0.2) {
                 speak(mostDominantObject!!)
                 objectSpeakCounter = 50
             }

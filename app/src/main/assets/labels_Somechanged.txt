@@ -12,7 +12,7 @@ pole
 ???
 sign
 pole
-chair
+bench
 bird
 cat
 dog
@@ -30,11 +30,11 @@ umbrella
 ???
 handbag
 tie
-bag
+suitcase
 frisbee
 skis
 snowboard
-orange
+sports ball
 kite
 baseball bat
 baseball glove
@@ -50,7 +50,7 @@ knife
 spoon
 bowl
 banana
-orange
+apple
 sandwich
 orange
 broccoli
@@ -67,14 +67,14 @@ bed
 dining table
 ???
 ???
-chair
+toilet
 ???
 tv
 laptop
 mouse
 remote
 keyboard
-phone
+cell phone
 microwave
 oven
 toaster

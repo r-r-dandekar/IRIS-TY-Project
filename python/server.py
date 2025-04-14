@@ -1,3 +1,5 @@
+
+
 from face_recognition import find_face, add_faces
 from barcode_qrcode import detect_barcode_or_qr, fetch_online_info
 from nlp_utils import combine_descriptions, clean_ocr_output, summarize_barcode_data, llm_response, user_llm_query
@@ -9,18 +11,22 @@ from object_detection import show_results_from_opencv_image as detect_objects
 import json
 from image_captioning import predict_step_from_rgb_images
 import time
-from sys import stdout
 import re
 from ocr_utils import image_to_string
 from deepface import DeepFace
 from threading import Lock, Thread
 from os import _exit
 import threading
+from sys import stdout, argv
 
 # Server settings
 HOST = '0.0.0.0'  # Bind to all network interfaces
-PORT = 55555      # Port to listen on
+if len(argv) > 1: 
+    PORT = int(argv[1])
+else: 
+    PORT = 55555
 client_socket = None
+
 
 heartbeat_counter = 0
 heartbeat_counter_limit = 150
@@ -70,7 +76,8 @@ def extract_json_objects(data, leftover):
 
 def ocr(json_data):
         base64_strings = json_data["images"]
-        extra_instructions = json_data["extra_instructions"]
+        
+        extra_instructions = json_data["extra_instructions"] if "extra_instructions" in json_data else ""
         print("extra_instructions: "+extra_instructions)
         stdout.flush()
 
@@ -84,16 +91,16 @@ def ocr(json_data):
             cv2.imwrite("temp.png", image)
             ocr_output.append(text)
 
-        text = clean_ocr_output(ocr_output, extra_instructions=extra_instructions)
+        # text = clean_ocr_output(ocr_output, extra_instructions=extra_instructions)
+        text=str(ocr_output).replace("\\n", " ")
         results={"ocr_text":text}
         print(results)
         json_str = json.dumps(results)
         send_to_client(json_str.encode())
 
-
 def face_recognition(json_data):
         base64_strings = json_data["images"]
-        extra_instructions = json_data["extra_instructions"]
+        extra_instructions = json_data["extra_instructions"] if "extra_instructions" in json_data else ""
         print("extra_instructions: "+extra_instructions)
         stdout.flush()
 
@@ -121,7 +128,7 @@ def image_caption(json_data):
 
         images = []
         base64_strings = json_data["images"]
-        extra_instructions = json_data["extra_instructions"]
+        extra_instructions = json_data["extra_instructions"] if "extra_instructions" in json_data else ""
         print("extra_instructions: "+extra_instructions)
         stdout.flush()
 
@@ -169,7 +176,7 @@ def count_objects(json_data):
 
     images = []
     base64_strings = json_data["images"]
-    extra_instructions = json_data["extra_instructions"]
+    extra_instructions = json_data["extra_instructions"] if "extra_instructions" in json_data else ""
     print("extra_instructions: "+extra_instructions)
     stdout.flush()
 
@@ -204,7 +211,7 @@ def add_face(json_data):
 
         images = []
         base64_strings = json_data["images"]
-        extra_instructions = json_data["extra_instructions"]
+        extra_instructions = json_data["extra_instructions"] if "extra_instructions" in json_data else ""
         name = extra_instructions
         print("extra_instructions: "+extra_instructions)
         stdout.flush()
@@ -236,7 +243,7 @@ def barcode_new_thread(json_data):
     print("Looking for a bar code or QR code")
 
     barcode_raw_value = json_data["upc_code"]
-    extra_instructions = json_data["extra_instructions"]
+    extra_instructions = json_data["extra_instructions"] if "extra_instructions" in json_data else ""
     print("extra_instructions: "+extra_instructions)
 
     print(barcode_raw_value)

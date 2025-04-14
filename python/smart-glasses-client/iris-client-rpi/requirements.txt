@@ -1,0 +1,11 @@
+scikit-learn
+asyncio
+google.generativeai
+pandas
+transformers[torch]
+gradio
+beautifulsoup4
+datasets
+pyttsx3
+torch
+

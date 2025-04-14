@@ -22,4 +22,5 @@ local.properties
 /python/__pycache__
 /python/face_db
 /python/chroma_facedb
+/python/smart-glasses-client/iris-client-rpi/command_classifier_model
 .env
